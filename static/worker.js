@@ -3,6 +3,7 @@ self.importScripts('/static/worker-libs.js');
 
 self.addEventListener('message', function(e){
     var nodes = e.data;
+    var tree = rbush(9);
     Network.minimumSpanningTree(nodes);
 }, false);
 
@@ -58,6 +59,12 @@ Network.degToRad = function(deg){
 Network.minimumSpanningTree = function(nodes){
     // Kruskal's Algorithm
     // http://architects.dzone.com/articles/algorithm-week-kruskals
+
+    self.postMessage({
+        cmd: 'status',
+        text: 'Generating Edges'
+    });
+
     var edges = [];
     for (var i=0, node_a; node_a=nodes[i]; i++){
         for (var j=i+1, node_b; node_b=nodes[j]; j++){
@@ -69,6 +76,11 @@ Network.minimumSpanningTree = function(nodes){
         }
     }
 
+    self.postMessage({
+        cmd: 'status',
+        text: 'Sorting Edges'
+    });
+
     edges.sort(function(a, b){
         return a.weight - b.weight;
     });
@@ -76,6 +88,11 @@ Network.minimumSpanningTree = function(nodes){
     var forest = {};
     _.each(nodes, function(node){
         forest[node.id] = node.id;
+    });
+
+    self.postMessage({
+        cmd: 'status',
+        text: 'Drawing Tree'
     });
 
     _.each(edges, function(edge){
@@ -94,6 +111,11 @@ Network.minimumSpanningTree = function(nodes){
                 edge: edge
             });
         }
+    });
+
+    self.postMessage({
+        cmd: 'status',
+        text: 'Finished'
     });
 };
 

@@ -1,5 +1,11 @@
 $(function(){
 
+var map = L.map('map').setView([40.809400, -73.960029], 16);
+L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+
+
 $('#map')
     .on('dragenter', function(e){
         $(this).css('border', '2px solid #0B85A1');
@@ -20,21 +26,21 @@ $('#map')
         return false;
     });
 
+$('.upload').click(function(){
+        doStuff(TEST_CSV);
+    });
 
-//doStuff(TEST_CSV);
-
+var layers = [];
 
 function doStuff(csv){
+    $('.status').text('Loading CSV');
+
     var nodes = nodesFromCSV(csv);
     var nodeMap = {};
     _.each(nodes, function(node){
         nodeMap[node.id] = node;
     });
-    var map = L.map('map').setView([nodes[0].lat, nodes[0].lon], 8);
-
-    L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(map);
+    map.setView([nodes[0].lat, nodes[0].lon], 8);
 
     for (var i=0, node; node=nodes[i]; i++){
         //L.marker([node.lat, node.long]).addTo(map);
@@ -47,7 +53,7 @@ function doStuff(csv){
     worker.addEventListener('message', function(e){
         var msg = e.data;
         if (msg.cmd == 'status'){
-            $('.status').text(msg.status);
+            $('.status').text(msg.text);
         } else if (msg.cmd == 'add_edge'){
             var edge = msg.edge;
             var node_a = nodeMap[edge.a];
