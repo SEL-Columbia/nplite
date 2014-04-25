@@ -1,0 +1,6 @@
+#header .logo {
+    display: block;
+    background-image: url('/static/logo.png');
+    width: 100px;
+    height: 50px;
+}
