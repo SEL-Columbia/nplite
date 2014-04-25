@@ -2,9 +2,9 @@ self.importScripts('/static/worker-libs.js');
 
 
 self.addEventListener('message', function(e){
-    var nodes = e.data;
-    var tree = rbush(9);
-    Network.minimumSpanningTree(nodes);
+    var msg = e.data;
+    var tree = rbush();
+    Network.minimumSpanningTree(msg.nodes);
 }, false);
 
 
@@ -23,6 +23,7 @@ Network.lineToPoints = function(lat1, lon1, lat2, lon2, interval){
     points.push([lat2, lon2]);
     return points;
 };
+
 Network.getBearing = function(lat1, lon1, lat2, lon2){
     // http://www.movable-type.co.uk/scripts/latlong.html
     var dLon = (lon2 - lon1).toRad();
@@ -31,6 +32,7 @@ Network.getBearing = function(lat1, lon1, lat2, lon2){
             Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
     return Math.atan2(y, x).toDeg();
 };
+
 Network.pointFromBearing = function(lat, lon, bearing, distance){
     // http://www.movable-type.co.uk/scripts/latlong.html
     var R = 6371;
@@ -42,6 +44,7 @@ Network.pointFromBearing = function(lat, lon, bearing, distance){
         Math.cos(d/R) - Math.sin(lat1) * Math.sin(lat2));
     return [lat2, lon2];
 };
+
 Network.distanceFromPoint = function(lat1, lon1, lat2, lon2){
     // http://stackoverflow.com/questions/27928/how-do-i-calculate-distance-between-two-latitude-longitude-points
     var R = 6371; // Radius of the earth in km    
@@ -53,9 +56,23 @@ Network.distanceFromPoint = function(lat1, lon1, lat2, lon2){
     var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
     return R * c; // Distance in km
 };
+
 Network.degToRad = function(deg){
     return deg * Math.PI / 180;
 };
+
+Network.generateNodeEdges = function(nodes){
+    
+};
+
+Network.generateRoadPoints = function(geojson){
+
+};
+
+Network.generatePowerlines = function(nodes, points){
+
+};
+
 Network.minimumSpanningTree = function(nodes){
     // Kruskal's Algorithm
     // http://architects.dzone.com/articles/algorithm-week-kruskals
@@ -113,10 +130,7 @@ Network.minimumSpanningTree = function(nodes){
         }
     });
 
-    self.postMessage({
-        cmd: 'status',
-        text: 'Finished'
-    });
+    self.postMessage({cmd: 'finished'});
 };
 
 

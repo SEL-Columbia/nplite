@@ -27,13 +27,21 @@ $('#map')
     });
 
 $('.upload').click(function(){
-        doStuff(TEST_CSV);
+        $('.status').text('Loading Example');
+        $.when(
+            $.get('/static/examples/nodes.csv'),
+            $.getJSON('/static/examples/paths.geojson'))
+            .done(function(csv, geojson){
+                doStuff(csv[0], geojson[0]);
+            });
     });
 
 var layers = [];
 
-function doStuff(csv){
-    $('.status').text('Loading CSV');
+function doStuff(csv, geojson){
+    $('.status').text('Loading CSV/GeoJSON');
+    console.log(csv);
+    console.log(geojson);
 
     var nodes = nodesFromCSV(csv);
     var nodeMap = {};
@@ -43,10 +51,10 @@ function doStuff(csv){
     map.setView([nodes[0].lat, nodes[0].lon], 8);
 
     for (var i=0, node; node=nodes[i]; i++){
-        //L.marker([node.lat, node.long]).addTo(map);
+        L.circle([node.lat, node.lon], 100, {color: 'green'}).addTo(map);
     }
 
-    L.geoJson(GEOJSON).addTo(map);
+    L.geoJson(geojson).addTo(map);
 
     var worker = new Worker('/static/worker.js');
 
@@ -59,12 +67,16 @@ function doStuff(csv){
             var node_a = nodeMap[edge.a];
             var node_b = nodeMap[edge.b];
             L.polyline([
-                L.latLng(node_a.lat, node_a.lon),
-                L.latLng(node_b.lat, node_b.lon)], {color: 'red'}).addTo(map);
+                [node_a.lat, node_a.lon],
+                [node_b.lat, node_b.lon]], {color: 'red', weight: 2}).addTo(map);
         }
     }, false);
 
-    worker.postMessage(nodes);
+    worker.postMessage({
+        cmd: 'init',
+        nodes: nodes,
+        paths: geojson
+    });
 }
 
 
