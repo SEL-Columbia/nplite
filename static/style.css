@@ -12,22 +12,18 @@ html, body {
     position: absolute;
     top: 0;
     left: 0;
-    width: 250px;
+    width: 200px;
     z-index: 1000;
-    overflow: visible;
+    padding: 20px;
 }
 #header .logo {
-    float: left;
-    padding: 15px;
-    width: 95px;
-    color: #222;
-    font-size: 19px;
+    color: #444;
+    font-size: 24px;
     font-weight: bold;
 }
 #header .status {
-    margin-left: 100px;
-    padding: 10px;
-    font-size: 15px;
+    margin-top: 5px;
+    font-size: 13px;
     color: #555;
 }
 #controls {
@@ -57,12 +53,7 @@ html, body {
 #map {
     height: 100%;
 }
-#map .leaflet-top {
-    top: 65px;
-}
-#map .leaflet-left {
-    left: 8px;
-}
+
 
 
 
