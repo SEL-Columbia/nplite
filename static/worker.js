@@ -30,7 +30,7 @@ Network.linesToPoints = function(lines){
     lines.forEach(function(line){
         for (var i=0, p1, p2; p1=line[i]; i++){
             if (p2=line[i]){
-                var linePoints = Network.lineToPoints(p1[1], p1[0], p2[1], p2[0]);
+                var linePoints = Network.lineToPoints(p1[0], p1[1], p2[0], p2[1], 0.001);
                 points.push.apply(points, linePoints);
             }
         }
@@ -43,8 +43,8 @@ Network.lineToPoints = function(lat1, lon1, lat2, lon2, interval){
     // interval: distance in km
     var bearing = this.getBearing(lat1, lon1, lat2, lon2);
     var distance = this.distanceFromPoint(lat1, lon1, lat2, lon2);
-    var points = [];
-    for (var i=0, d; d=i*interval && d<=distance;i++){
+    var points = [[lat1, lon1]];
+    for (var i=1, d; d=i*interval && d<=distance; i++){
         var point = this.pointFromBearing(lat1, lon1, bearing, d);
         points.push(point);
     }

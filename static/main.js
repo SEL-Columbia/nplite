@@ -132,7 +132,11 @@ function linesFromGeoJSON(json){
     var lines = [];
     json.features.forEach(function(feature){
         if (feature.geometry.type === 'LineString'){
-            lines.push(feature.geometry.coordinates);
+            var coordinates = [];
+            feature.geometry.coordinates.forEach(function(point){
+                coordinates.push([point[1], point[0]]);
+            });
+            lines.push(coordinates);
         }
     });
     return lines;
