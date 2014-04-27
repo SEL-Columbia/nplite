@@ -7,7 +7,13 @@ self.addEventListener('message', function(e){
     Network.minimumSpanningTree(msg.nodes);
 }, false);
 
-
+console = {};
+console.log = function(s){
+    self.postMessage({
+        cmd: 'debug',
+        data: s
+    });
+}
 
 var Network = {};
 Network.lineToPoints = function(lat1, lon1, lat2, lon2, interval){
@@ -81,56 +87,207 @@ Network.minimumSpanningTree = function(nodes){
         cmd: 'status',
         text: 'Generating Edges'
     });
+    var startTime = (new Date).getTime();
 
-    var edges = [];
-    for (var i=0, node_a; node_a=nodes[i]; i++){
-        for (var j=i+1, node_b; node_b=nodes[j]; j++){
-            edges.push({
-                a: node_a.id,
-                b: node_b.id,
-                weight: this.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
-            });
+
+    function btree(){
+        var edges = new buckets.BSTree(function(a, b){
+            return a.weight - b.weight;
+        });
+        for (var i=0, node_a; node_a=nodes[i]; i++){
+            for (var j=i+1, node_b; node_b=nodes[j]; j++){
+                edges.add({
+                    a: node_a.id,
+                    b: node_b.id,
+                    weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
+                });
+            }
         }
+        return edges;
     }
 
-    self.postMessage({
-        cmd: 'status',
-        text: 'Sorting Edges'
-    });
 
-    edges.sort(function(a, b){
-        return a.weight - b.weight;
-    });
+    function array(){
+        var edges = [];
+        for (var i=0, node_a; node_a=nodes[i]; i++){
+            for (var j=i+1, node_b; node_b=nodes[j]; j++){
+                edges.push({
+                    a: node_a.id,
+                    b: node_b.id,
+                    weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
+                });
+            }
+        }
+
+        self.postMessage({
+            cmd: 'status',
+            text: 'Sorting Edges'
+        });
+
+        edges.sort(function(a, b){
+            return a.weight - b.weight;
+        });
+        return edges;
+    }
+
+    function wtf(){
+        var edges = new SortedList();
+        for (var i=0, node_a; node_a=nodes[i]; i++){
+            for (var j=i+1, node_b; node_b=nodes[j]; j++){
+                edges.add({
+                    a: node_a.id,
+                    b: node_b.id,
+                    weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
+                });
+            }
+        }
+        return edges;
+    }
+
+    function rbtree(){
+        var edges = new BinTree(function(a, b){
+            return a.weight - b.weight;
+        });
+        for (var i=0, node_a; node_a=nodes[i]; i++){
+            for (var j=i+1, node_b; node_b=nodes[j]; j++){
+                edges.insert({
+                    a: node_a.id,
+                    b: node_b.id,
+                    weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
+                });
+            }
+        }
+        edges.forEach = edges.each;
+        return edges;
+    }
+    
+    var edges = wtf();
+    //var edges = array();
+    //var edges = btree();
+    //var edges = rbtree();
 
     var forest = {};
     _.each(nodes, function(node){
-        forest[node.id] = node.id;
+        forest[node.id] = [node.id];
     });
 
     self.postMessage({
         cmd: 'status',
-        text: 'Drawing Tree'
+        text: 'Drawing Tree cX'
     });
 
-    _.each(edges, function(edge){
-        // If both edge vertices are in different sets, combine them
-        if (forest[edge.a] !== forest[edge.b]){
-            var a_value = forest[edge.a];
-            var b_value = forest[edge.b];
-            _.each(forest, function(value, id){
-                if (value === b_value){
-                    forest[id] = a_value;
-                }
+    console.log((new Date).getTime() - startTime);
+
+    var i = 0;
+    var edges2 = [];
+
+    edges.forEach(function(edge){
+        var set_a = forest[edge.a];
+        var set_b = forest[edge.b];
+
+        // If both edge vertices are in different sets
+        if (set_a !== set_b){
+            // Combine sets
+            set_a.push.apply(set_a, set_b);
+            set_b.forEach(function(id){
+                forest[id] = set_a;
             });
             // Add edge to tree
-            self.postMessage({
-                cmd: 'add_edge',
-                edge: edge
-            });
+            edges2.push(edge);
         }
     });
 
-    self.postMessage({cmd: 'finished'});
+    self.postMessage({cmd: 'status', text: 'added'});
+    console.log((new Date).getTime() - startTime);
+
+
+    edges2.forEach(function(edge){
+        edge.left = null;
+        edge.right = null;
+        self.postMessage({
+                    cmd: 'add_edge',
+                    edge: edge
+                });
+    });
+
+
+    console.log('i:', i);
+    console.log((new Date).getTime() - startTime);
+
+    self.postMessage({cmd: 'status', text: 'Finished'});
 };
+
+
+
+var SortedList = function(){
+    // Sorted list of nodes using BTree
+    // Adapted from:
+    // https://github.com/nzakas/computer-science-in-javascript
+    this.root = null;
+};
+
+SortedList.prototype.add = function(node){
+    node.left = null;
+    node.right = null;
+
+    if (this.root === null){
+        this.root = node;
+        return;
+    } 
+
+    var current = this.root;
+    while (true){
+        var cmp = node.weight - current.weight;
+        if (cmp < 0){
+            if (current.left === null){
+                current.left = node;
+                break;
+            } else {                    
+                current = current.left;
+            }
+        } else if (cmp > 0){
+            if (current.right === null){
+                current.right = node;
+                break;
+            } else {                    
+                current = current.right;
+            }       
+        } else {
+            return;
+        }
+    }
+};
+
+SortedList.prototype.forEach = function(cb){
+    function inOrder(node){
+        if (node){
+            if (node.left !== null){
+                inOrder(node.left);
+            }
+            cb(node);
+            if (node.right !== null){
+                inOrder(node.right);
+            }
+        }
+    }
+    inOrder(this.root);    
+};
+
+
+SortedList.prototype.forEach2 = function(cb){
+    var current = this.root;
+    var stack = [this.root];
+    while (stack.length || current) {
+        if (current){
+            stack.push(current);
+            current = current.left;
+        } else {
+            current = stack.pop();
+            cb(current);
+            current = current.right;
+        }
+    }
+};
+
 
 
