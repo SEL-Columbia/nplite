@@ -14,16 +14,18 @@ html, body {
     left: 0;
     width: 250px;
     z-index: 1000;
+    overflow: visible;
 }
 #header .logo {
-    display: inline-block;
+    float: left;
     padding: 15px;
+    width: 95px;
     color: #222;
     font-size: 19px;
     font-weight: bold;
 }
 #header .status {
-    display: inline-block;
+    margin-left: 100px;
     padding: 10px;
     font-size: 15px;
     color: #555;

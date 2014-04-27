@@ -26,7 +26,8 @@ $('#map')
         return false;
     });
 
-$('.upload').click(function(){
+$('.network')
+    .click(function(){
         $('.status').text('Loading Example');
         $.when(
             $.get('/static/examples/nodes.csv'),
@@ -40,9 +41,6 @@ var layers = [];
 
 function doStuff(csv, geojson){
     $('.status').text('Loading CSV/GeoJSON');
-    console.log(csv);
-    console.log(geojson);
-
     var nodes = nodesFromCSV(csv);
     var nodeMap = {};
     _.each(nodes, function(node){
@@ -51,7 +49,7 @@ function doStuff(csv, geojson){
     map.setView([nodes[0].lat, nodes[0].lon], 8);
 
     for (var i=0, node; node=nodes[i]; i++){
-        L.circle([node.lat, node.lon], 100, {color: 'green'}).addTo(map);
+        L.circle([node.lat, node.lon], 100, {fillOpacity: 1, stroke: false, color: 'green'}).addTo(map);
     }
 
     L.geoJson(geojson).addTo(map);
@@ -60,15 +58,17 @@ function doStuff(csv, geojson){
 
     worker.addEventListener('message', function(e){
         var msg = e.data;
-        if (msg.cmd == 'status'){
+        if (msg.cmd === 'status'){
             $('.status').text(msg.text);
-        } else if (msg.cmd == 'add_edge'){
+        } else if (msg.cmd === 'debug'){
+            console.log(JSON.stringify(msg.data));
+        } else if (msg.cmd === 'add_edge'){
             var edge = msg.edge;
             var node_a = nodeMap[edge.a];
             var node_b = nodeMap[edge.b];
             L.polyline([
                 [node_a.lat, node_a.lon],
-                [node_b.lat, node_b.lon]], {color: 'red', weight: 2}).addTo(map);
+                [node_b.lat, node_b.lon]], {color: 'orange', weight: 2}).addTo(map);
         }
     }, false);
 
