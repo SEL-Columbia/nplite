@@ -1,9 +1,36 @@
 $(function(){
 
-var map = L.map('map').setView([40.809400, -73.960029], 16);
+var map = L.map('map', {zoomControl: false}).setView([40.809400, -73.960029], 16);
+
 L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
+
+new L.Control.Zoom({ position: 'bottomright' }).addTo(map);
+
+var worker = new Worker('/static/worker.js');
+var nodeMap = {};
+
+worker.addEventListener('message', function(e){
+    var msg = e.data;
+    if (msg.type === 'status'){
+        $('.status').text(msg.text);
+    } else if (msg.type === 'debug'){
+        console.log(JSON.stringify(msg.data));
+    } else if (msg.type === 'add_edge'){
+        var edge = msg.edge;
+        var node_a = nodeMap[edge.a];
+        var node_b = nodeMap[edge.b];
+        L.polyline([
+            [node_a.lat, node_a.lon],
+            [node_b.lat, node_b.lon]], {color: 'orange', weight: 2}).addTo(map);
+    } else if (msg.type === 'add_points'){
+        msg.points.forEach(function(point){
+            L.circle([point[0], point[1]], 50, {fillOpacity: 1, stroke: false, color: 'red'})
+                .addTo(map);
+        });
+    }
+}, false);
 
 
 $('#map')
@@ -37,12 +64,10 @@ $('.network')
             });
     });
 
-var layers = [];
 
 function doStuff(csv, geojson){
     $('.status').text('Loading CSV/GeoJSON');
     var nodes = nodesFromCSV(csv);
-    var nodeMap = {};
     _.each(nodes, function(node){
         nodeMap[node.id] = node;
     });
@@ -54,28 +79,15 @@ function doStuff(csv, geojson){
 
     L.geoJson(geojson).addTo(map);
 
-    var worker = new Worker('/static/worker.js');
-
-    worker.addEventListener('message', function(e){
-        var msg = e.data;
-        if (msg.cmd === 'status'){
-            $('.status').text(msg.text);
-        } else if (msg.cmd === 'debug'){
-            console.log(JSON.stringify(msg.data));
-        } else if (msg.cmd === 'add_edge'){
-            var edge = msg.edge;
-            var node_a = nodeMap[edge.a];
-            var node_b = nodeMap[edge.b];
-            L.polyline([
-                [node_a.lat, node_a.lon],
-                [node_b.lat, node_b.lon]], {color: 'orange', weight: 2}).addTo(map);
-        }
-    }, false);
-
     worker.postMessage({
-        cmd: 'init',
+        type: 'init',
         nodes: nodes,
         paths: geojson
+    });
+
+    worker.postMessage({
+        type: 'lines',
+        lines: linesFromGeoJSON(geojson)
     });
 }
 
@@ -114,6 +126,18 @@ function nodesFromCSV(str){
     }
     return nodes;
 }
+
+
+function linesFromGeoJSON(json){
+    var lines = [];
+    json.features.forEach(function(feature){
+        if (feature.geometry.type === 'LineString'){
+            lines.push(feature.geometry.coordinates);
+        }
+    });
+    return lines;
+}
+
 
 
 });

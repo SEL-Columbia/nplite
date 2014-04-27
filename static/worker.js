@@ -1,21 +1,43 @@
 self.importScripts('/static/worker-libs.js');
 
+console = {};
+console.log = function(data){
+    self.postMessage({
+        type: 'debug',
+        data: JSON.stringify(data)
+    });
+};
+
 
 self.addEventListener('message', function(e){
     var msg = e.data;
-    var tree = rbush();
-    Network.minimumSpanningTree(msg.nodes);
+    if (msg.type === 'init'){
+        Network.minimumSpanningTree(msg.nodes);
+    } else if (msg.type === 'lines'){
+        var points = Network.linesToPoints(msg.lines);
+        self.postMessage({
+            type: 'add_points',
+            points: points
+        });
+    }
 }, false);
 
-console = {};
-console.log = function(s){
-    self.postMessage({
-        cmd: 'debug',
-        data: s
-    });
-}
+
 
 var Network = {};
+Network.linesToPoints = function(lines){
+    var points = [];
+    lines.forEach(function(line){
+        for (var i=0, p1, p2; p1=line[i]; i++){
+            if (p2=line[i]){
+                var linePoints = Network.lineToPoints(p1[1], p1[0], p2[1], p2[0]);
+                points.push.apply(points, linePoints);
+            }
+        }
+    });
+    return points;
+};
+
 Network.lineToPoints = function(lat1, lon1, lat2, lon2, interval){
     // Splits a line into multiple points
     // interval: distance in km
@@ -32,11 +54,11 @@ Network.lineToPoints = function(lat1, lon1, lat2, lon2, interval){
 
 Network.getBearing = function(lat1, lon1, lat2, lon2){
     // http://www.movable-type.co.uk/scripts/latlong.html
-    var dLon = (lon2 - lon1).toRad();
+    var dLon = this.degToRad(lon2 - lon1);
     var y = Math.sin(dLon) * Math.cos(lat2);
     var x = Math.cos(lat1) * Math.sin(lat2) -
             Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-    return Math.atan2(y, x).toDeg();
+    return this.radToDeg(Math.atan2(y, x));
 };
 
 Network.pointFromBearing = function(lat, lon, bearing, distance){
@@ -67,6 +89,10 @@ Network.degToRad = function(deg){
     return deg * Math.PI / 180;
 };
 
+Network.radToDeg = function(rad){
+    return rad * 180 / Math.PI;
+};
+
 Network.generateNodeEdges = function(nodes){
     
 };
@@ -84,102 +110,40 @@ Network.minimumSpanningTree = function(nodes){
     // http://architects.dzone.com/articles/algorithm-week-kruskals
 
     self.postMessage({
-        cmd: 'status',
+        type: 'status',
         text: 'Generating Edges'
     });
     var startTime = (new Date).getTime();
 
-
-    function btree(){
-        var edges = new buckets.BSTree(function(a, b){
-            return a.weight - b.weight;
-        });
-        for (var i=0, node_a; node_a=nodes[i]; i++){
-            for (var j=i+1, node_b; node_b=nodes[j]; j++){
-                edges.add({
-                    a: node_a.id,
-                    b: node_b.id,
-                    weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
-                });
-            }
+    var edges = [];
+    for (var i=0, node_a; node_a=nodes[i]; i++){
+        for (var j=i+1, node_b; node_b=nodes[j]; j++){
+            edges.push({
+                a: node_a.id,
+                b: node_b.id,
+                weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
+            });
         }
-        return edges;
     }
 
+    self.postMessage({
+        type: 'status',
+        text: 'Sorting Edges'
+    });
 
-    function array(){
-        var edges = [];
-        for (var i=0, node_a; node_a=nodes[i]; i++){
-            for (var j=i+1, node_b; node_b=nodes[j]; j++){
-                edges.push({
-                    a: node_a.id,
-                    b: node_b.id,
-                    weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
-                });
-            }
-        }
+    edges.sort(function(a, b){
+        return a.weight - b.weight;
+    });
 
-        self.postMessage({
-            cmd: 'status',
-            text: 'Sorting Edges'
-        });
-
-        edges.sort(function(a, b){
-            return a.weight - b.weight;
-        });
-        return edges;
-    }
-
-    function wtf(){
-        var edges = new SortedList();
-        for (var i=0, node_a; node_a=nodes[i]; i++){
-            for (var j=i+1, node_b; node_b=nodes[j]; j++){
-                edges.add({
-                    a: node_a.id,
-                    b: node_b.id,
-                    weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
-                });
-            }
-        }
-        return edges;
-    }
-
-    function rbtree(){
-        var edges = new BinTree(function(a, b){
-            return a.weight - b.weight;
-        });
-        for (var i=0, node_a; node_a=nodes[i]; i++){
-            for (var j=i+1, node_b; node_b=nodes[j]; j++){
-                edges.insert({
-                    a: node_a.id,
-                    b: node_b.id,
-                    weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
-                });
-            }
-        }
-        edges.forEach = edges.each;
-        return edges;
-    }
-    
-    var edges = wtf();
-    //var edges = array();
-    //var edges = btree();
-    //var edges = rbtree();
+    self.postMessage({
+        type: 'status',
+        text: 'Drawing Tree'
+    });
 
     var forest = {};
     _.each(nodes, function(node){
         forest[node.id] = [node.id];
     });
-
-    self.postMessage({
-        cmd: 'status',
-        text: 'Drawing Tree cX'
-    });
-
-    console.log((new Date).getTime() - startTime);
-
-    var i = 0;
-    var edges2 = [];
 
     edges.forEach(function(edge){
         var set_a = forest[edge.a];
@@ -193,101 +157,19 @@ Network.minimumSpanningTree = function(nodes){
                 forest[id] = set_a;
             });
             // Add edge to tree
-            edges2.push(edge);
+            self.postMessage({
+                type: 'add_edge',
+                edge: edge
+            });
         }
     });
 
-    self.postMessage({cmd: 'status', text: 'added'});
     console.log((new Date).getTime() - startTime);
 
-
-    edges2.forEach(function(edge){
-        edge.left = null;
-        edge.right = null;
-        self.postMessage({
-                    cmd: 'add_edge',
-                    edge: edge
-                });
-    });
-
-
-    console.log('i:', i);
-    console.log((new Date).getTime() - startTime);
-
-    self.postMessage({cmd: 'status', text: 'Finished'});
+    self.postMessage({type: 'status', text: 'Finished'});
 };
 
 
-
-var SortedList = function(){
-    // Sorted list of nodes using BTree
-    // Adapted from:
-    // https://github.com/nzakas/computer-science-in-javascript
-    this.root = null;
-};
-
-SortedList.prototype.add = function(node){
-    node.left = null;
-    node.right = null;
-
-    if (this.root === null){
-        this.root = node;
-        return;
-    } 
-
-    var current = this.root;
-    while (true){
-        var cmp = node.weight - current.weight;
-        if (cmp < 0){
-            if (current.left === null){
-                current.left = node;
-                break;
-            } else {                    
-                current = current.left;
-            }
-        } else if (cmp > 0){
-            if (current.right === null){
-                current.right = node;
-                break;
-            } else {                    
-                current = current.right;
-            }       
-        } else {
-            return;
-        }
-    }
-};
-
-SortedList.prototype.forEach = function(cb){
-    function inOrder(node){
-        if (node){
-            if (node.left !== null){
-                inOrder(node.left);
-            }
-            cb(node);
-            if (node.right !== null){
-                inOrder(node.right);
-            }
-        }
-    }
-    inOrder(this.root);    
-};
-
-
-SortedList.prototype.forEach2 = function(cb){
-    var current = this.root;
-    var stack = [this.root];
-    while (stack.length || current) {
-        if (current){
-            stack.push(current);
-            current = current.left;
-        } else {
-            current = stack.pop();
-            cb(current);
-            current = current.right;
-        }
-    }
-};
 
 
 
