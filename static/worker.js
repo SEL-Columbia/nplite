@@ -14,23 +14,46 @@ self.addEventListener('message', function(e){
     if (msg.type === 'init'){
         Network.minimumSpanningTree(msg.nodes);
     } else if (msg.type === 'lines'){
-        var points = Network.linesToPoints(msg.lines);
         self.postMessage({
             type: 'add_points',
-            points: points
+            points: Network.linesToPoints(msg.lines)
         });
     }
 }, false);
 
 
 
-var Network = {};
+Network = {};
 Network.linesToPoints = function(lines){
     var points = [];
     lines.forEach(function(line){
         for (var i=0, p1, p2; p1=line[i]; i++){
             if (p2=line[i]){
-                var linePoints = Network.lineToPoints(p1[0], p1[1], p2[0], p2[1], 0.001);
+                var linePoints = Network.lineToPoints(p1[0], p1[1], p2[0], p2[1], 0.0001);
+                points.push.apply(points, linePoints);
+            }
+        }
+    });
+    return points;
+};
+
+Network.linesToPoints2 = function(lines, interval){
+    // Quick approximation of points on a line
+    var self = this;
+    var points = [];
+    var interval = interval || 0.0001;
+    lines.forEach(function(line){
+        for (var i=0, p1, p2; p1=line[i]; i++){
+            if (p2=line[i]){
+                var d = self.distanceFromPoint(p1[0], p1[1], p2[0], p2[1]);
+                var nSplits = Math.floor(d / interval);
+                var splitLat = (p1[0] - p2[0]) / nSplits;
+                var splitLon = (p1[1] - p2[1]) / nSplits;
+                var linePoints = [p1];
+                for (var j=0; j < nSplits; j++){
+                    linePoints.push([j * splitLat + p1[0], j * splitLon + p2[0]]);
+                }
+                // Update list in place
                 points.push.apply(points, linePoints);
             }
         }
@@ -121,6 +144,7 @@ Network.minimumSpanningTree = function(nodes){
             edges.push({
                 a: node_a.id,
                 b: node_b.id,
+                points: [[node_a.lat, node_a.lon], [node_b.lat, node_b.lon]],
                 weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
             });
         }
@@ -170,6 +194,76 @@ Network.minimumSpanningTree = function(nodes){
 };
 
 
+Network.generateNetwork = function(nodes, lines){
+    // Node set up
+    nodes.forEach(function(node){
+        node.type = 'community';
+        node.connected = false;
+    });
+    var points = this.linesToPoints(lines);
+    points.forEach(function(point){
+        nodes.push({
+            type: 'grid',
+            lat: point[0],
+            lon: point[1],
+            connected: true
+        });
+    });
 
+    // For each power node find closest unconnected community nodes
+    nodes.forEach(function(node){
+        if (node.type === 'grid'){
+            var neighbors = [];
+            nodes.forEach(function(node2){
+                if (node !== node2 && node2.type === 'community' && node2.connected === false){
+                    neighbors.push(node2);
+                }
+            });
+
+            neighbors.each(function(neighbor){
+                Network.connectNode(neighbor, nodes);
+            });
+        }
+    });
+};
+
+
+Network.connectNode = function(start, nodes){
+    var visited = {};
+    var edge = [];
+
+    // Find closest connected node
+    var currNode = null, currWeight;
+    nodes.forEach(function(node){
+        if (start !== node && node.connected){
+            var weight = Network.calculateWeight(start, node);
+            if (currNode === null || currWeight < weight && !visited[node.id]){
+                currNode = node;
+                currWeight = weight;
+                visited[node.id] = true;
+            }
+        }
+    });
+
+    if (closest){
+        var closed = false;
+
+        while (!closed){
+
+        }
+    }
+
+};
+
+
+Network.calculateWeight = function(node1, node2){
+    var savings = 1;
+    if (node1.type === 'grid')
+        savings -= 0.25;
+    if (node2.type === 'grid')
+        savings -= 0.25;
+    var weight = Network.distanceFromPoint(node1.lat, node1.lon, node2.lat, node2.lon);
+    return weight * savings;
+};
 
 
