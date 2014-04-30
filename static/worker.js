@@ -37,11 +37,11 @@ Network.linesToPoints = function(lines){
     return points;
 };
 
-Network.linesToPoints2 = function(lines, interval){
+Network.linesToPoints = function(lines, interval){
     // Quick approximation of points on a line
     var self = this;
     var points = [];
-    var interval = interval || 0.0001;
+    var interval = interval || 0.00001;
     lines.forEach(function(line){
         for (var i=0, p1, p2; p1=line[i]; i++){
             if (p2=line[i]){

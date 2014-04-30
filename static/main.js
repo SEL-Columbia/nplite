@@ -10,7 +10,11 @@ Main.init = function(){
 
     // Initialize map
     self.map = L.map('map', {zoomControl: false})
-        .setView([40.809400, -73.960029], 16);
+        .setView([40.809400, -73.960029], 16)
+        .on('click', function(e){
+            console.log("Lat, Lon : " + e.latlng.lat + ", " + e.latlng.lng)
+            return false;
+        });
     L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(self.map);
@@ -93,10 +97,17 @@ Main.drawNetwork = function(csv, geojson){
     });
 
     if (geojson){
-        L.geoJson(geojson).addTo(self.map);
+        var lines = self.linesFromGeoJSON(geojson);
+        console.log(lines);
+        lines.forEach(function(line){
+            L.polyline(line, {color: 'blue'}).addTo(self.map);
+        });
+
+
+        //L.geoJson(geojson).addTo(self.map);
         self.worker.postMessage({
             type: 'lines',
-            lines: self.linesFromGeoJSON(geojson)
+            lines: lines
         });
     }
 };

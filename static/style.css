@@ -16,14 +16,15 @@ html, body {
     padding: 20px;
 }
 #header .logo {
-    color: #444;
+    color: #333;
     font-size: 24px;
     font-weight: bold;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.2);
 }
 #header .status {
     margin-top: 5px;
     font-size: 13px;
-    color: #555;
+    color: #444;
 }
 #controls {
     position: absolute;
@@ -39,9 +40,11 @@ html, body {
     padding: 8px;
     font-size: 30px;
     color: white;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.7);
     border-radius: 7px;
     line-height: 0;
+    /* blatantly stolen from google maps */
+    box-shadow: 2px 2px 7px rgba(0,0,0,0.3);
 }
 #controls .btn:hover {
     background: black;
