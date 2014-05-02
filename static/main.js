@@ -14,9 +14,17 @@ Main.init = function(){
             console.log("Lat, Lon : " + e.latlng.lat + ", " + e.latlng.lng)
             return false;
         });
+    /*
     L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(self.map);
+    */
+    L.tileLayer("http://otile{s}.mqcdn.com/tiles/1.0.0/osm/{z}/{x}/{y}.jpeg", {
+            attribution: '<a href="http://www.mapquest.com/">MapQuest</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            subdomains:'1234'
+        }).addTo(self.map);
+
+
     new L.Control.Zoom({ position: 'bottomright' }).addTo(self.map);
 
     // Start worker

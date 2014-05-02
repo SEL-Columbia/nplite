@@ -144,6 +144,9 @@ Network.radToDeg = function(rad){
 Network.generateNetwork = function(){
     // Simple test to split network generation into quadrants
     self.postMessage({rpc: 'status', data:'Generating Network...'});
+
+    //return this.minimumSpanningTree(this.nodes);
+
     var bbox = this.getBoundingBox();
     var sw = bbox[0];
     var ne = bbox[1];
@@ -152,7 +155,6 @@ Network.generateNetwork = function(){
     var dLon = (ne.lon - sw.lon) / split;
     for (var lat=sw.lat; lat < ne.lat; lat += dLat){
         for (var lon=sw.lon; lon < ne.lon; lon += dLon){
-            //if (Math.random() < 0.5) continue;
             var bbox = [lon, lat, lon + dLon, lat + dLat];
             var nodes = this.rtree.search(bbox);
             this.minimumSpanningTree(nodes);
