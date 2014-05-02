@@ -1,13 +1,5 @@
 self.importScripts('/static/worker-libs.js');
 
-console = {};
-console.log = function(data){
-    self.postMessage({
-        rpc: 'debug',
-        data: JSON.stringify(data)
-    });
-};
-
 
 self.addEventListener('message', function(e){
     var msg = e.data;
@@ -22,16 +14,16 @@ Network = {
     rtree: rbush(9, ['.lon', '.lat', '.lon', '.lat'])
 };
 
-Network.addNodes = function(nodes){
+Network.loadNodes = function(nodes){
     self.postMessage({rpc: 'status', data: 'Adding Nodes...'})
     nodes.forEach(function(node){
         node.id = Network.lastId++;
         Network.nodes.push(node);
-        Network.rtree.insert(node);
     });
+    Network.rtree.load(nodes);
 };
 
-Network.addLines = function(lines){
+Network.loadLines = function(lines){
     // Converts lines into points (nodes)
     self.postMessage({rpc: 'status', data: 'Adding Lines...'});
     var points = [];
@@ -52,7 +44,7 @@ Network.addLines = function(lines){
             type: 'line'
         });
     });
-    this.addNodes(nodes);
+    this.loadNodes(nodes);
 };
 
 Network.linesToPoints = function(lines, interval){
@@ -107,21 +99,6 @@ Network.getBoundingBox = function(){
     return [sw, ne];
 };
 
-Network.getMidpoint = function(lat1, lon1, lat2, lon2){
-    // http://stackoverflow.com/questions/4656802/midpoint-between-two-latitude-and-longitude
-    var dLon = this.degToRad(lon2 - lon1);
-    //convert to radians
-    lat1 = this.degToRad(lat1);
-    lat2 = this.degToRad(lat2);
-    lon1 = this.degToRad(lon1);
-    var Bx = Math.cos(lat2) * Math.cos(dLon);
-    var By = Math.cos(lat2) * Math.sin(dLon);
-    var lat3 = Math.atan2(Math.sin(lat1) + Math.sin(lat2), Math.sqrt((Math.cos(lat1) + Bx) * (Math.cos(lat1) + Bx) + By * By));
-    var lon3 = lon1 + Math.atan2(By, Math.cos(lat1) + Bx);
-    return [this.radToDeg(lat3), this.radToDeg(lon3)];
-};
-
-
 Network.getBearing = function(lat1, lon1, lat2, lon2){
     // http://www.movable-type.co.uk/scripts/latlong.html
     var dLon = this.degToRad(lon2 - lon1);
@@ -165,18 +142,22 @@ Network.radToDeg = function(rad){
 
 
 Network.generateNetwork = function(){
-    // Simple test to split network nodes into quadrants
+    // Simple test to split network generation into quadrants
+    self.postMessage({rpc: 'status', data:'Generating Network...'});
     var bbox = this.getBoundingBox();
     var sw = bbox[0];
     var ne = bbox[1];
-    var mid = this.getMidpoint(sw.lat, sw.lon, ne.lat, ne.lon);
-    mid = {lat: mid[0], lon: mid[1]};
-
-    var area = [sw.lon, sw.lat, mid.lon, mid.lat];
-    //console.log(area);
-    var nodes = this.rtree.search(area);
-    //console.log(nodes)
-    this.minimumSpanningTree(nodes);
+    var split = 4;
+    var dLat = (ne.lat - sw.lat) / split;
+    var dLon = (ne.lon - sw.lon) / split;
+    for (var lat=sw.lat; lat < ne.lat; lat += dLat){
+        for (var lon=sw.lon; lon < ne.lon; lon += dLon){
+            //if (Math.random() < 0.5) continue;
+            var bbox = [lon, lat, lon + dLon, lat + dLat];
+            var nodes = this.rtree.search(bbox);
+            this.minimumSpanningTree(nodes);
+        }
+    }
 };
 
 
@@ -229,7 +210,7 @@ Network.minimumSpanningTree = function(nodes){
             var node_a = nodeMap[edge.a];
             var node_b = nodeMap[edge.b];
             edge.points = [[node_a.lat, node_a.lon], [node_b.lat, node_b.lon]];
-            self.postMessage({rpc: 'addEdge', data: edge});
+            self.postMessage({rpc: 'drawEdge', data: edge});
         }
     });
 
