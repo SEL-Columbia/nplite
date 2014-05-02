@@ -3,7 +3,7 @@ self.importScripts('/static/worker-libs.js');
 console = {};
 console.log = function(data){
     self.postMessage({
-        type: 'debug',
+        rpc: 'debug',
         data: JSON.stringify(data)
     });
 };
@@ -11,30 +11,48 @@ console.log = function(data){
 
 self.addEventListener('message', function(e){
     var msg = e.data;
-    if (msg.type === 'init'){
-        Network.minimumSpanningTree(msg.nodes);
-    } else if (msg.type === 'lines'){
-        self.postMessage({
-            type: 'add_points',
-            points: Network.linesToPoints(msg.lines)
-        });
-    }
+    Network[msg.rpc](msg.data);
 }, false);
 
 
 
-Network = {};
-Network.linesToPoints = function(lines){
+Network = {
+    lastId: 0, 
+    nodes: [],
+    rtree: rbush(9, ['.lon', '.lat', '.lon', '.lat'])
+};
+
+Network.addNodes = function(nodes){
+    self.postMessage({rpc: 'status', data: 'Adding Nodes...'})
+    nodes.forEach(function(node){
+        node.id = Network.lastId++;
+        Network.nodes.push(node);
+        Network.rtree.insert(node);
+    });
+};
+
+Network.addLines = function(lines){
+    // Converts lines into points (nodes)
+    self.postMessage({rpc: 'status', data: 'Adding Lines...'});
     var points = [];
     lines.forEach(function(line){
         for (var i=0, p1, p2; p1=line[i]; i++){
             if (p2=line[i]){
-                var linePoints = Network.lineToPoints(p1[0], p1[1], p2[0], p2[1], 0.0001);
+                var linePoints = self.lineToPoints(p1[0], p1[1], p2[0], p2[1], 0.0001);
                 points.push.apply(points, linePoints);
             }
         }
     });
-    return points;
+
+    var nodes = [];
+    points.forEach(function(point){
+        nodes.push({
+            lat: point[0],
+            lon: point[1],
+            type: 'line'
+        });
+    });
+    this.addNodes(nodes);
 };
 
 Network.linesToPoints = function(lines, interval){
@@ -74,6 +92,35 @@ Network.lineToPoints = function(lat1, lon1, lat2, lon2, interval){
     points.push([lat2, lon2]);
     return points;
 };
+
+Network.getBoundingBox = function(){
+    var node = this.nodes[0];
+    if (!node) return;
+    var sw = {lat: node.lat, lon: node.lon};
+    var ne = {lat: node.lat, lon: node.lon};
+    this.nodes.forEach(function(node){
+        sw.lat = Math.min(sw.lat, node.lat);
+        sw.lon = Math.min(sw.lon, node.lon);
+        ne.lat = Math.max(ne.lat, node.lat);
+        ne.lon = Math.max(ne.lon, node.lon);
+    });
+    return [sw, ne];
+};
+
+Network.getMidpoint = function(lat1, lon1, lat2, lon2){
+    // http://stackoverflow.com/questions/4656802/midpoint-between-two-latitude-and-longitude
+    var dLon = this.degToRad(lon2 - lon1);
+    //convert to radians
+    lat1 = this.degToRad(lat1);
+    lat2 = this.degToRad(lat2);
+    lon1 = this.degToRad(lon1);
+    var Bx = Math.cos(lat2) * Math.cos(dLon);
+    var By = Math.cos(lat2) * Math.sin(dLon);
+    var lat3 = Math.atan2(Math.sin(lat1) + Math.sin(lat2), Math.sqrt((Math.cos(lat1) + Bx) * (Math.cos(lat1) + Bx) + By * By));
+    var lon3 = lon1 + Math.atan2(By, Math.cos(lat1) + Bx);
+    return [this.radToDeg(lat3), this.radToDeg(lon3)];
+};
+
 
 Network.getBearing = function(lat1, lon1, lat2, lon2){
     // http://www.movable-type.co.uk/scripts/latlong.html
@@ -116,31 +163,31 @@ Network.radToDeg = function(rad){
     return rad * 180 / Math.PI;
 };
 
-Network.generateNodeEdges = function(nodes){
-    
+
+Network.generateNetwork = function(){
+    // Simple test to split network nodes into quadrants
+    var bbox = this.getBoundingBox();
+    var sw = bbox[0];
+    var ne = bbox[1];
+    var mid = this.getMidpoint(sw.lat, sw.lon, ne.lat, ne.lon);
+    mid = {lat: mid[0], lon: mid[1]};
+
+    var area = [sw.lon, sw.lat, mid.lon, mid.lat];
+    //console.log(area);
+    var nodes = this.rtree.search(area);
+    //console.log(nodes)
+    this.minimumSpanningTree(nodes);
 };
 
-Network.generateRoadPoints = function(geojson){
-
-};
-
-Network.generatePowerlines = function(nodes, points){
-
-};
 
 Network.minimumSpanningTree = function(nodes){
     // Kruskal's Algorithm
     // http://architects.dzone.com/articles/algorithm-week-kruskals
 
-    self.postMessage({
-        type: 'status',
-        text: 'Generating Edges'
-    });
+    self.postMessage({rpc: 'status', data: 'Generating Edges'});
     var startTime = (new Date).getTime();
-
     var nodeMap = {};
     var edges = [];
-
     
     for (var i=0, node_a; node_a=nodes[i]; i++){
         nodeMap[node_a.id] = node_a;
@@ -153,19 +200,13 @@ Network.minimumSpanningTree = function(nodes){
         }
     }
 
-    self.postMessage({
-        type: 'status',
-        text: 'Sorting Edges'
-    });
+    self.postMessage({rpc: 'status', data: 'Sorting Edges'});
 
     edges.sort(function(a, b){
         return a.weight - b.weight;
     });
 
-    self.postMessage({
-        type: 'status',
-        text: 'Drawing Tree'
-    });
+    self.postMessage({rpc: 'status', data: 'Drawing Tree'});
 
     var forest = {};
     nodes.forEach(function(node){
@@ -188,35 +229,18 @@ Network.minimumSpanningTree = function(nodes){
             var node_a = nodeMap[edge.a];
             var node_b = nodeMap[edge.b];
             edge.points = [[node_a.lat, node_a.lon], [node_b.lat, node_b.lon]];
-            self.postMessage({
-                type: 'add_edge',
-                edge: edge
-            });
+            self.postMessage({rpc: 'addEdge', data: edge});
         }
     });
 
     console.log((new Date).getTime() - startTime);
 
-    self.postMessage({type: 'status', text: 'Finished'});
+    self.postMessage({rpc: 'status', data: 'Finished'});
 };
 
 
-Network.generateNetwork = function(nodes, lines){
-    // Node set up
-    nodes.forEach(function(node){
-        node.type = 'community';
-        node.connected = false;
-    });
-    var points = this.linesToPoints(lines);
-    points.forEach(function(point){
-        nodes.push({
-            type: 'grid',
-            lat: point[0],
-            lon: point[1],
-            connected: true
-        });
-    });
 
+Network.generateNetwork2 = function(){
     // For each power node find closest unconnected community nodes
     nodes.forEach(function(node){
         if (node.type === 'grid'){

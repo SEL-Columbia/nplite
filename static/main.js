@@ -6,7 +6,6 @@ $(function(){
 Main = {};
 Main.init = function(){
     var self = this;
-    self.nodeMap = {};
 
     // Initialize map
     self.map = L.map('map', {zoomControl: false})
@@ -24,21 +23,22 @@ Main.init = function(){
     self.worker = new Worker('/static/worker.js');
     self.worker.addEventListener('message', function(e){
         var msg = e.data;
-        if (msg.type === 'status'){
-            $('.status').text(msg.text);
-        } else if (msg.type === 'debug'){
-            console.log(JSON.stringify(msg.data));
-        } else if (msg.type === 'add_edge'){
-            self.addEdge(msg.edge);
-        } else if (msg.type === 'add_points'){
-            msg.points.forEach(function(point){
-                L.circle([point[0], point[1]], 50, {fillOpacity: 1, stroke: false, color: 'red'})
-                    .addTo(self.map);
-            });
-        }
+        Main[msg.rpc](msg.data);
     }, false);
 
+    // Controls
+    $('.network')
+        .click(function(){
+            $('.status').text('Loading Example');
+            $.when(
+                $.get('/static/examples/nodes.csv'),
+                $.getJSON('/static/examples/paths.geojson'))
+                .done(function(csv, geojson){
+                    self.drawNetwork(csv[0], geojson[0]);
+                });
+        });
 
+    // Map Events
     $('#map')
         .on('dragenter', function(e){
             $(this).css('border', '2px solid #0B85A1');
@@ -58,17 +58,6 @@ Main.init = function(){
             reader.readAsText(files[0]);
             return false;
         });
-
-    $('.network')
-        .click(function(){
-            $('.status').text('Loading Example');
-            $.when(
-                $.get('/static/examples/nodes.csv'),
-                $.getJSON('/static/examples/paths.geojson'))
-                .done(function(csv, geojson){
-                    self.drawNetwork(csv[0], geojson[0]);
-                });
-        });
 };
 
 Main.drawNetwork = function(csv, geojson){
@@ -79,7 +68,6 @@ Main.drawNetwork = function(csv, geojson){
     $('.status').text('Loading CSV/GeoJSON');
 
     nodes.forEach(function(node){
-        self.nodeMap[node.id] = node;
         nodePoints.push([node.lat, node.lon]);
     });
 
@@ -90,33 +78,38 @@ Main.drawNetwork = function(csv, geojson){
             .addTo(self.map);
     });
 
-    self.worker.postMessage({
-        type: 'init',
-        nodes: nodes,
-        paths: geojson
-    });
+    self.worker.postMessage({rpc: 'addNodes', data: nodes});
 
     if (geojson){
         var lines = self.linesFromGeoJSON(geojson);
-        console.log(lines);
         lines.forEach(function(line){
             L.polyline(line, {color: 'blue'}).addTo(self.map);
         });
-
-
         //L.geoJson(geojson).addTo(self.map);
-        self.worker.postMessage({
-            type: 'lines',
-            lines: lines
-        });
+        //self.worker.postMessage({rpc: 'addLines', data: lines});
     }
+    self.worker.postMessage({rpc: 'generateNetwork'});
+};
+
+Main.status = function(text){
+    $('.status').text(text);
+};
+
+Main.debug = function(obj){
+    console.log(obj);
 };
 
 Main.addEdge = function(edge){
-    var node_a = this.nodeMap[edge.a];
-    var node_b = this.nodeMap[edge.b];
     L.polyline(edge.points, {color: 'orange', weight: 2})
         .addTo(this.map);
+};
+
+Main.addPoints = function(points){
+    var self = this;
+    points.forEach(function(point){
+        L.circle([point[0], point[1]], 50, {fillOpacity: 1, stroke: false, color: 'red'})
+            .addTo(self.map);
+    });
 };
 
 Main.nodesFromCSV = function(csv){
@@ -133,14 +126,13 @@ Main.nodesFromCSV = function(csv){
         for (var j=0, value; value=values[j]; j++){
             node[headers[j]] = value;
         }
-        nodes.push(node);
+        if (node.lat && node.lon){
+            nodes.push(node);
+        }
     }
 
     // Projection conversions
     for (var i=0, node; node=nodes[i]; i++){
-        if (typeof node.id == 'undefined'){
-            node.id = i;
-        }
         if (proj){
             var latLon = proj.forward([parseInt(node.x), parseInt(node.y)]);
             node.lat = latLon[0];
