@@ -138,13 +138,16 @@ Network.minimumSpanningTree = function(nodes){
     });
     var startTime = (new Date).getTime();
 
+    var nodeMap = {};
     var edges = [];
+
+    
     for (var i=0, node_a; node_a=nodes[i]; i++){
+        nodeMap[node_a.id] = node_a;
         for (var j=i+1, node_b; node_b=nodes[j]; j++){
             edges.push({
                 a: node_a.id,
                 b: node_b.id,
-                points: [[node_a.lat, node_a.lon], [node_b.lat, node_b.lon]],
                 weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
             });
         }
@@ -165,7 +168,7 @@ Network.minimumSpanningTree = function(nodes){
     });
 
     var forest = {};
-    _.each(nodes, function(node){
+    nodes.forEach(function(node){
         forest[node.id] = [node.id];
     });
 
@@ -180,7 +183,11 @@ Network.minimumSpanningTree = function(nodes){
             set_b.forEach(function(id){
                 forest[id] = set_a;
             });
+            
             // Add edge to tree
+            var node_a = nodeMap[edge.a];
+            var node_b = nodeMap[edge.b];
+            edge.points = [[node_a.lat, node_a.lon], [node_b.lat, node_b.lon]];
             self.postMessage({
                 type: 'add_edge',
                 edge: edge
