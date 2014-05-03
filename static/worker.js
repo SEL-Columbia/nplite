@@ -6,6 +6,9 @@ self.addEventListener('message', function(e){
     Network[msg.rpc](msg.data);
 }, false);
 
+function rpc(rpc, data){
+    self.postMessage({rpc: rpc, data: data});
+};
 
 
 Network = {
@@ -15,88 +18,57 @@ Network = {
 };
 
 Network.loadNodes = function(nodes){
-    self.postMessage({rpc: 'status', data: 'Adding Nodes...'})
+    rpc('status', 'Adding Nodes...');
+    var self = this;
     nodes.forEach(function(node){
         node.id = Network.lastId++;
-        Network.nodes.push(node);
+        node.connected = node.type === 'network' ? true : false;
+        self.nodes.push(node);
     });
-    Network.rtree.load(nodes);
+    self.rtree.load(nodes);
 };
 
 Network.loadLines = function(lines){
     // Converts lines into points (nodes)
-    self.postMessage({rpc: 'status', data: 'Adding Lines...'});
-    var points = [];
-    lines.forEach(function(line){
-        for (var i=0, p1, p2; p1=line[i]; i++){
-            if (p2=line[i]){
-                var linePoints = self.lineToPoints(p1[0], p1[1], p2[0], p2[1], 0.0001);
-                points.push.apply(points, linePoints);
-            }
-        }
-    });
-
+    rpc('status', 'Adding Lines...');
+    var points = this.linesToPoints(lines);
     var nodes = [];
     points.forEach(function(point){
         nodes.push({
             lat: point[0],
             lon: point[1],
-            type: 'line'
+            type: 'network'
         });
     });
     this.loadNodes(nodes);
+    rpc('status', 'Drawing Nodes...');
+    rpc('drawNodes', nodes);
+    rpc('status', 'Done');
 };
 
-Network.linesToPoints = function(lines, interval){
+Network.linesToPoints = function(lines){
     // Quick approximation of points on a line
     var self = this;
     var points = [];
-    var interval = interval || 0.00001;
+    var interval = 1;
     lines.forEach(function(line){
         for (var i=0, p1, p2; p1=line[i]; i++){
-            if (p2=line[i]){
+            if (p2=line[i+1]){
                 var d = self.distanceFromPoint(p1[0], p1[1], p2[0], p2[1]);
                 var nSplits = Math.floor(d / interval);
-                var splitLat = (p1[0] - p2[0]) / nSplits;
-                var splitLon = (p1[1] - p2[1]) / nSplits;
+                var splitLat = (p2[0] - p1[0]) / nSplits;
+                var splitLon = (p2[1] - p1[1]) / nSplits;
                 var linePoints = [p1];
                 for (var j=0; j < nSplits; j++){
-                    linePoints.push([j * splitLat + p1[0], j * splitLon + p2[0]]);
+                    linePoints.push([j * splitLat + p1[0], j * splitLon + p1[1]]);
                 }
+                linePoints.push(p2);
                 // Update list in place
                 points.push.apply(points, linePoints);
             }
         }
     });
     return points;
-};
-
-Network.lineToPoints = function(lat1, lon1, lat2, lon2, interval){
-    // Splits a line into multiple points
-    // interval: distance in km
-    var bearing = this.getBearing(lat1, lon1, lat2, lon2);
-    var distance = this.distanceFromPoint(lat1, lon1, lat2, lon2);
-    var points = [[lat1, lon1]];
-    for (var i=1, d; d=i*interval && d<=distance; i++){
-        var point = this.pointFromBearing(lat1, lon1, bearing, d);
-        points.push(point);
-    }
-    points.push([lat2, lon2]);
-    return points;
-};
-
-Network.getBoundingBox = function(){
-    var node = this.nodes[0];
-    if (!node) return;
-    var sw = {lat: node.lat, lon: node.lon};
-    var ne = {lat: node.lat, lon: node.lon};
-    this.nodes.forEach(function(node){
-        sw.lat = Math.min(sw.lat, node.lat);
-        sw.lon = Math.min(sw.lon, node.lon);
-        ne.lat = Math.max(ne.lat, node.lat);
-        ne.lon = Math.max(ne.lon, node.lon);
-    });
-    return [sw, ne];
 };
 
 Network.getBearing = function(lat1, lon1, lat2, lon2){
@@ -120,6 +92,21 @@ Network.pointFromBearing = function(lat, lon, bearing, distance){
     return [lat2, lon2];
 };
 
+Network.getBoundingBox = function(){
+    var node = this.nodes[0];
+    if (!node) return;
+    var sw = {lat: node.lat, lon: node.lon};
+    var ne = {lat: node.lat, lon: node.lon};
+    this.nodes.forEach(function(node){
+        sw.lat = Math.min(sw.lat, node.lat);
+        sw.lon = Math.min(sw.lon, node.lon);
+        ne.lat = Math.max(ne.lat, node.lat);
+        ne.lon = Math.max(ne.lon, node.lon);
+    });
+    return [sw, ne];
+};
+
+
 Network.distanceFromPoint = function(lat1, lon1, lat2, lon2){
     // http://stackoverflow.com/questions/27928/how-do-i-calculate-distance-between-two-latitude-longitude-points
     var R = 6371; // Radius of the earth in km    
@@ -132,6 +119,24 @@ Network.distanceFromPoint = function(lat1, lon1, lat2, lon2){
     return R * c; // Distance in km
 };
 
+Network.distBetweenPoints = function(lat1, lon1, lat2, lon2) {
+    var R = 6371;
+    var φ1 = this.degToRad(lat1)
+    var λ1 = this.degToRad(lon1);
+    var φ2 = this.degToRad(lat2)
+    var λ2 = this.degToRad(lon2);
+    var Δφ = φ2 - φ1;
+    var Δλ = λ2 - λ1;
+
+    var a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+
+
 Network.degToRad = function(deg){
     return deg * Math.PI / 180;
 };
@@ -143,7 +148,7 @@ Network.radToDeg = function(rad){
 
 Network.generateNetwork = function(){
     // Simple test to split network generation into quadrants
-    self.postMessage({rpc: 'status', data:'Generating Network...'});
+    rpc('status', 'Generating Edges...');
 
     //return this.minimumSpanningTree(this.nodes);
 
@@ -153,46 +158,58 @@ Network.generateNetwork = function(){
     var split = 4;
     var dLat = (ne.lat - sw.lat) / split;
     var dLon = (ne.lon - sw.lon) / split;
+    var network = [];
     for (var lat=sw.lat; lat < ne.lat; lat += dLat){
         for (var lon=sw.lon; lon < ne.lon; lon += dLon){
             var bbox = [lon, lat, lon + dLon, lat + dLat];
             var nodes = this.rtree.search(bbox);
-            this.minimumSpanningTree(nodes);
+            var edges = this.generateEdges(nodes);
+            network = network.concat(edges);
         }
     }
+    // rpc('debug', network);
+
+    this.minimumSpanningTree(network);
 };
 
-
-Network.minimumSpanningTree = function(nodes){
-    // Kruskal's Algorithm
-    // http://architects.dzone.com/articles/algorithm-week-kruskals
-
-    self.postMessage({rpc: 'status', data: 'Generating Edges'});
-    var startTime = (new Date).getTime();
-    var nodeMap = {};
-    var edges = [];
-    
+Network.generateEdges = function(nodes){
+    var edges = [];    
     for (var i=0, node_a; node_a=nodes[i]; i++){
-        nodeMap[node_a.id] = node_a;
         for (var j=i+1, node_b; node_b=nodes[j]; j++){
             edges.push({
                 a: node_a.id,
                 b: node_b.id,
-                weight: Network.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
+                points: [[node_a.lat, node_a.lon], [node_b.lat, node_b.lon]],
+                weight: this.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
             });
         }
     }
+    return edges;
+};
 
-    self.postMessage({rpc: 'status', data: 'Sorting Edges'});
+Network.calculateWeight = function(node1, node2){
+    var savings = 1;
+    if (node1.type === 'grid')
+        savings -= 0.25;
+    if (node2.type === 'grid')
+        savings -= 0.25;
+    var weight = Network.distanceFromPoint(node1.lat, node1.lon, node2.lat, node2.lon);
+    return weight * savings;
+};
+
+Network.minimumSpanningTree = function(edges){
+    // Kruskal's Algorithm
+    // http://architects.dzone.com/articles/algorithm-week-kruskals
+    rpc('status', 'Sorting Edges');
 
     edges.sort(function(a, b){
         return a.weight - b.weight;
     });
 
-    self.postMessage({rpc: 'status', data: 'Drawing Tree'});
+    rpc('status', 'Drawing Network');
 
     var forest = {};
-    nodes.forEach(function(node){
+    this.nodes.forEach(function(node){
         forest[node.id] = [node.id];
     });
 
@@ -207,77 +224,15 @@ Network.minimumSpanningTree = function(nodes){
             set_b.forEach(function(id){
                 forest[id] = set_a;
             });
-            
             // Add edge to tree
-            var node_a = nodeMap[edge.a];
-            var node_b = nodeMap[edge.b];
-            edge.points = [[node_a.lat, node_a.lon], [node_b.lat, node_b.lon]];
-            self.postMessage({rpc: 'drawEdge', data: edge});
+            rpc('drawEdge', edge);
         }
     });
-
-    console.log((new Date).getTime() - startTime);
-
-    self.postMessage({rpc: 'status', data: 'Finished'});
+    rpc('status', 'Finished');
 };
 
 
 
-Network.generateNetwork2 = function(){
-    // For each power node find closest unconnected community nodes
-    nodes.forEach(function(node){
-        if (node.type === 'grid'){
-            var neighbors = [];
-            nodes.forEach(function(node2){
-                if (node !== node2 && node2.type === 'community' && node2.connected === false){
-                    neighbors.push(node2);
-                }
-            });
 
-            neighbors.each(function(neighbor){
-                Network.connectNode(neighbor, nodes);
-            });
-        }
-    });
-};
-
-
-Network.connectNode = function(start, nodes){
-    var visited = {};
-    var edge = [];
-
-    // Find closest connected node
-    var currNode = null, currWeight;
-    nodes.forEach(function(node){
-        if (start !== node && node.connected){
-            var weight = Network.calculateWeight(start, node);
-            if (currNode === null || currWeight < weight && !visited[node.id]){
-                currNode = node;
-                currWeight = weight;
-                visited[node.id] = true;
-            }
-        }
-    });
-
-    if (closest){
-        var closed = false;
-
-        while (!closed){
-
-        }
-    }
-
-};
-
-
-Network.calculateWeight = function(node1, node2){
-    var savings = 1;
-    if (node1.type === 'grid')
-        savings -= 0.25;
-    if (node2.type === 'grid')
-        savings -= 0.25;
-    var weight = Network.distanceFromPoint(node1.lat, node1.lon, node2.lat, node2.lon);
-    return weight * savings;
-};
 
 

@@ -87,16 +87,16 @@ Main.drawNetwork = function(csv, geojson){
     });
 
     self.worker.postMessage({rpc: 'loadNodes', data: nodes});
+    self.worker.postMessage({rpc: 'generateNetwork'});
 
     if (geojson){
         var lines = self.linesFromGeoJSON(geojson);
         lines.forEach(function(line){
             L.polyline(line, {color: 'blue'}).addTo(self.map);
         });
-        //L.geoJson(geojson).addTo(self.map);
-        //self.worker.postMessage({rpc: 'loadLines', data: lines});
+        L.geoJson(geojson).addTo(self.map);
+        self.worker.postMessage({rpc: 'loadLines', data: lines});
     }
-    self.worker.postMessage({rpc: 'generateNetwork'});
 };
 
 Main.status = function(text){
@@ -112,10 +112,11 @@ Main.drawEdge = function(edge){
         .addTo(this.map);
 };
 
-Main.drawPoints = function(points){
+Main.drawNodes = function(nodes){
     var self = this;
-    points.forEach(function(point){
-        L.circle([point[0], point[1]], 50, {fillOpacity: 1, stroke: false, color: 'red'})
+    nodes.forEach(function(node){
+        var color = node.type === 'network' ? 'red' : 'green';
+        L.circle([node.lat, node.lon], 50, {fillOpacity: 1, stroke: false, color: color})
             .addTo(self.map);
     });
 };
