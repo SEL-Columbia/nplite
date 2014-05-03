@@ -87,7 +87,6 @@ Main.drawNetwork = function(csv, geojson){
     });
 
     self.worker.postMessage({rpc: 'loadNodes', data: nodes});
-    self.worker.postMessage({rpc: 'generateNetwork'});
 
     if (geojson){
         var lines = self.linesFromGeoJSON(geojson);
@@ -97,6 +96,8 @@ Main.drawNetwork = function(csv, geojson){
         L.geoJson(geojson).addTo(self.map);
         self.worker.postMessage({rpc: 'loadLines', data: lines});
     }
+
+    self.worker.postMessage({rpc: 'generateNetwork'});
 };
 
 Main.status = function(text){
@@ -115,7 +116,7 @@ Main.drawEdge = function(edge){
 Main.drawNodes = function(nodes){
     var self = this;
     nodes.forEach(function(node){
-        var color = node.type === 'network' ? 'red' : 'green';
+        var color = node.type === 'grid' ? 'red' : 'green';
         L.circle([node.lat, node.lon], 50, {fillOpacity: 1, stroke: false, color: color})
             .addTo(self.map);
     });

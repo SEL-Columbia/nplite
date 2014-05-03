@@ -10,6 +10,14 @@ function rpc(rpc, data){
     self.postMessage({rpc: rpc, data: data});
 };
 
+var debugI = 0;
+function intermittentDebug(msg, interval){
+    if (debugI % interval === 0){
+        rpc('debug', msg);
+    }
+    debugI++;
+}
+
 
 Network = {
     lastId: 0, 
@@ -22,7 +30,7 @@ Network.loadNodes = function(nodes){
     var self = this;
     nodes.forEach(function(node){
         node.id = Network.lastId++;
-        node.connected = node.type === 'network' ? true : false;
+        node.connected = node.type === 'grid' ? true : false;
         self.nodes.push(node);
     });
     self.rtree.load(nodes);
@@ -37,7 +45,7 @@ Network.loadLines = function(lines){
         nodes.push({
             lat: point[0],
             lon: point[1],
-            type: 'network'
+            type: 'grid'
         });
     });
     this.loadNodes(nodes);
@@ -46,154 +54,76 @@ Network.loadLines = function(lines){
     rpc('status', 'Done');
 };
 
-Network.linesToPoints = function(lines){
-    // Quick approximation of points on a line
-    var self = this;
-    var points = [];
-    var interval = 1;
-    lines.forEach(function(line){
-        for (var i=0, p1, p2; p1=line[i]; i++){
-            if (p2=line[i+1]){
-                var d = self.distanceFromPoint(p1[0], p1[1], p2[0], p2[1]);
-                var nSplits = Math.floor(d / interval);
-                var splitLat = (p2[0] - p1[0]) / nSplits;
-                var splitLon = (p2[1] - p1[1]) / nSplits;
-                var linePoints = [p1];
-                for (var j=0; j < nSplits; j++){
-                    linePoints.push([j * splitLat + p1[0], j * splitLon + p1[1]]);
-                }
-                linePoints.push(p2);
-                // Update list in place
-                points.push.apply(points, linePoints);
-            }
-        }
-    });
-    return points;
-};
-
-Network.getBearing = function(lat1, lon1, lat2, lon2){
-    // http://www.movable-type.co.uk/scripts/latlong.html
-    var dLon = this.degToRad(lon2 - lon1);
-    var y = Math.sin(dLon) * Math.cos(lat2);
-    var x = Math.cos(lat1) * Math.sin(lat2) -
-            Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-    return this.radToDeg(Math.atan2(y, x));
-};
-
-Network.pointFromBearing = function(lat, lon, bearing, distance){
-    // http://www.movable-type.co.uk/scripts/latlong.html
-    var R = 6371;
-    var lat2 = Math.asin(
-        Math.sin(lat) * Math.cos(distance/R) + 
-        Math.cos(lat) * Math.sin(distance/R) * Math.cos(brng));
-    var lon2 = lon + Math.atan2(
-        Math.sin(bearing) * Math.sin(distance/R) * Math.cos(lat1), 
-        Math.cos(d/R) - Math.sin(lat1) * Math.sin(lat2));
-    return [lat2, lon2];
-};
-
-Network.getBoundingBox = function(){
-    var node = this.nodes[0];
-    if (!node) return;
-    var sw = {lat: node.lat, lon: node.lon};
-    var ne = {lat: node.lat, lon: node.lon};
-    this.nodes.forEach(function(node){
-        sw.lat = Math.min(sw.lat, node.lat);
-        sw.lon = Math.min(sw.lon, node.lon);
-        ne.lat = Math.max(ne.lat, node.lat);
-        ne.lon = Math.max(ne.lon, node.lon);
-    });
-    return [sw, ne];
-};
-
-
-Network.distanceFromPoint = function(lat1, lon1, lat2, lon2){
-    // http://stackoverflow.com/questions/27928/how-do-i-calculate-distance-between-two-latitude-longitude-points
-    var R = 6371; // Radius of the earth in km    
-    var dLat = this.degToRad(lat2 - lat1);
-    var dLon = this.degToRad(lon2 - lon1); 
-    var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(this.degToRad(lat1)) * Math.cos(this.degToRad(lat2)) * 
-        Math.sin(dLon/2) * Math.sin(dLon/2); 
-    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-    return R * c; // Distance in km
-};
-
-Network.distBetweenPoints = function(lat1, lon1, lat2, lon2) {
-    var R = 6371;
-    var φ1 = this.degToRad(lat1)
-    var λ1 = this.degToRad(lon1);
-    var φ2 = this.degToRad(lat2)
-    var λ2 = this.degToRad(lon2);
-    var Δφ = φ2 - φ1;
-    var Δλ = λ2 - λ1;
-
-    var a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-}
-
-
-
-Network.degToRad = function(deg){
-    return deg * Math.PI / 180;
-};
-
-Network.radToDeg = function(rad){
-    return rad * 180 / Math.PI;
-};
-
-
 Network.generateNetwork = function(){
-    // Simple test to split network generation into quadrants
-    rpc('status', 'Generating Edges...');
-
-    //return this.minimumSpanningTree(this.nodes);
-
-    var bbox = this.getBoundingBox();
-    var sw = bbox[0];
-    var ne = bbox[1];
-    var split = 4;
-    var dLat = (ne.lat - sw.lat) / split;
-    var dLon = (ne.lon - sw.lon) / split;
-    var network = [];
-    for (var lat=sw.lat; lat < ne.lat; lat += dLat){
-        for (var lon=sw.lon; lon < ne.lon; lon += dLon){
-            var bbox = [lon, lat, lon + dLon, lat + dLat];
-            var nodes = this.rtree.search(bbox);
-            var edges = this.generateEdges(nodes);
-            network = network.concat(edges);
+    rpc('status', 'Generating Network...');
+    var self = this;
+    var queue = [];
+    this.nodes.forEach(function(node){
+        if (node.type === 'grid'){
+            queue.push(node);
         }
-    }
-    // rpc('debug', network);
+    });
 
-    this.minimumSpanningTree(network);
+    rpc('status', 'Building Edges...');
+    var edges = [];
+    while (queue.length > 0){
+        var node = queue.shift();
+        intermittentDebug(queue.length, 100);
+        if (node.connected && node.type !== 'grid') continue;
+        var nodeBbox = this.bboxForNode(node, 10);
+        var sw = nodeBbox[0];
+        var ne = nodeBbox[1];
+        var neighbors = this.rtree.search([sw.lon, sw.lat, ne.lon, ne.lat]);
+        neighbors.forEach(function(neighbor){
+            if (neighbor.connected || neighbor === node) return;
+            var edge = self.generateEdge(node, neighbor, neighbors);
+            neighbor.connected = true;
+            edges.push(edge);
+            queue.push(neighbor);
+        });
+    }
+    self.minimumSpanningTree(edges);
 };
 
-Network.generateEdges = function(nodes){
-    var edges = [];    
-    for (var i=0, node_a; node_a=nodes[i]; i++){
-        for (var j=i+1, node_b; node_b=nodes[j]; j++){
-            edges.push({
-                a: node_a.id,
-                b: node_b.id,
-                points: [[node_a.lat, node_a.lon], [node_b.lat, node_b.lon]],
-                weight: this.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
-            });
+Network.generateEdge = function(start, end, neighbors){
+    var self = this;
+    var weight = self.calculateWeight(start, end);
+    var points = [[start.lat, start.lon]];
+    var curr = start;
+    while (curr !== end){
+        // Find cheapest path
+        var changed = false;
+        neighbors.forEach(function(node){
+            if (curr === node) return;
+            var pathWeight = self.calculateWeight(curr, node) +
+                ((node === end) ? 0 : self.calculateWeight(node, end));
+            if (pathWeight < weight){
+                weight = pathWeight;
+                curr = node;
+                points.push([node.lat, node.lon]);
+                changed = true;
+            }
+        });
+        if (!changed){
+            points.push([end.lat, end.lon]);
+            break;
         }
     }
-    return edges;
+    return {
+        a: start.id,
+        b: end.id,
+        points: points,
+        weight: weight
+    };
 };
 
 Network.calculateWeight = function(node1, node2){
     var savings = 1;
     if (node1.type === 'grid')
-        savings -= 0.25;
+        savings -= 0.05;
     if (node2.type === 'grid')
-        savings -= 0.25;
-    var weight = Network.distanceFromPoint(node1.lat, node1.lon, node2.lat, node2.lon);
+        savings -= 0.05;
+    var weight = this.distanceFromPoint(node1.lat, node1.lon, node2.lat, node2.lon);
     return weight * savings;
 };
 
@@ -232,7 +162,132 @@ Network.minimumSpanningTree = function(edges){
 };
 
 
+// Utils
+Network.linesToPoints = function(lines){
+    // Quick approximation of points on a line
+    var self = this;
+    var points = [];
+    var interval = 1;
+    lines.forEach(function(line){
+        for (var i=0, p1, p2; p1=line[i]; i++){
+            if (p2=line[i+1]){
+                var dist = self.distanceFromPoint(p1[0], p1[1], p2[0], p2[1]);
+                var nSplits = Math.floor(dist / interval);
+                var splitLat = (p2[0] - p1[0]) / nSplits;
+                var splitLon = (p2[1] - p1[1]) / nSplits;
+                var linePoints = [p1];
+                for (var j=0; j < nSplits; j++){
+                    linePoints.push([j * splitLat + p1[0], j * splitLon + p1[1]]);
+                }
+                linePoints.push(p2);
+                // Update list in place
+                points.push.apply(points, linePoints);
+            }
+        }
+    });
+    return points;
+};
 
+Network.bboxForNode = function(node, padding){
+    var sw = {
+        lat: this.endPoint(node.lat, node.lon, 180, padding)[0],
+        lon: this.endPoint(node.lat, node.lon, 270, padding)[1]
+    };
+    var ne = {
+        lat: this.endPoint(node.lat, node.lon, 0, padding)[0],
+        lon: this.endPoint(node.lat, node.lon, 90, padding)[1]
+    };
+    return [sw, ne];
+};
+
+Network.getBearing = function(lat1, lon1, lat2, lon2){
+    // http://www.movable-type.co.uk/scripts/latlong.html
+    var dLon = this.degToRad(lon2 - lon1);
+    var y = Math.sin(dLon) * Math.cos(lat2);
+    var x = Math.cos(lat1) * Math.sin(lat2) -
+            Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    return this.radToDeg(Math.atan2(y, x));
+};
+
+Network.pointFromBearing = function(lat, lon, bearing, distance){
+    // http://www.movable-type.co.uk/scripts/latlong.html
+    var R = 6371;
+    bearing = this.degToRad(bearing);
+    var lat2 = Math.asin(
+        Math.sin(lat) * Math.cos(distance/R) + 
+        Math.cos(lat) * Math.sin(distance/R) * Math.cos(bearing));
+    var lon2 = lon + Math.atan2(
+        Math.sin(bearing) * Math.sin(distance/R) * Math.cos(lat), 
+        Math.cos(distance/R) - Math.sin(lat) * Math.sin(lat2));
+    return [lat2, lon2];
+};
+
+Network.endPoint = function(lat, lon, brng, dist) {
+    // http://www.movable-type.co.uk/scripts/latlong.html
+    var θ = this.degToRad(brng);
+    var δ = dist / 6371; // angular distance in radians
+
+    var φ1 = this.degToRad(lat);
+    var λ1 = this.degToRad(lon);
+
+    var φ2 = Math.asin( Math.sin(φ1)*Math.cos(δ) +
+                        Math.cos(φ1)*Math.sin(δ)*Math.cos(θ) );
+    var λ2 = λ1 + Math.atan2(Math.sin(θ)*Math.sin(δ)*Math.cos(φ1),
+                             Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
+    λ2 = (λ2+3*Math.PI) % (2*Math.PI) - Math.PI; // normalise to -180..+180º
+
+    return [this.radToDeg(φ2), this.radToDeg(λ2)];
+}
+
+Network.getBoundingBox = function(){
+    var node = this.nodes[0];
+    if (!node) return;
+    var sw = {lat: node.lat, lon: node.lon};
+    var ne = {lat: node.lat, lon: node.lon};
+    this.nodes.forEach(function(node){
+        sw.lat = Math.min(sw.lat, node.lat);
+        sw.lon = Math.min(sw.lon, node.lon);
+        ne.lat = Math.max(ne.lat, node.lat);
+        ne.lon = Math.max(ne.lon, node.lon);
+    });
+    return [sw, ne];
+};
+
+Network.distanceFromPoint = function(lat1, lon1, lat2, lon2){
+    // http://stackoverflow.com/questions/27928/how-do-i-calculate-distance-between-two-latitude-longitude-points
+    var R = 6371; // Radius of the earth in km    
+    var dLat = this.degToRad(lat2 - lat1);
+    var dLon = this.degToRad(lon2 - lon1); 
+    var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(this.degToRad(lat1)) * Math.cos(this.degToRad(lat2)) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2); 
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    return R * c; // Distance in km
+};
+
+Network.distBetweenPoints = function(lat1, lon1, lat2, lon2) {
+    var R = 6371;
+    var φ1 = this.degToRad(lat1)
+    var λ1 = this.degToRad(lon1);
+    var φ2 = this.degToRad(lat2)
+    var λ2 = this.degToRad(lon2);
+    var Δφ = φ2 - φ1;
+    var Δλ = λ2 - λ1;
+
+    var a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+Network.degToRad = function(deg){
+    return deg * Math.PI / 180;
+};
+
+Network.radToDeg = function(rad){
+    return rad * 180 / Math.PI;
+};
 
 
 

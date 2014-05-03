@@ -1,3 +1,44 @@
+Network.generateNetworkQuad = function(){
+    // Simple test to split network generation into quadrants
+    rpc('status', 'Generating Edges...');
+
+    //return this.minimumSpanningTree(this.nodes);
+
+    var bbox = this.getBoundingBox();
+    var sw = bbox[0];
+    var ne = bbox[1];
+    var split = 4;
+    var dLat = (ne.lat - sw.lat) / split;
+    var dLon = (ne.lon - sw.lon) / split;
+    var network = [];
+    for (var lat=sw.lat; lat < ne.lat; lat += dLat){
+        for (var lon=sw.lon; lon < ne.lon; lon += dLon){
+            var bbox = [lon, lat, lon + dLon, lat + dLat];
+            var nodes = this.rtree.search(bbox);
+            var edges = this.generateEdges(nodes);
+            network = network.concat(edges);
+        }
+    }
+    this.minimumSpanningTree(network);
+};
+
+
+Network.generateEdges = function(nodes){
+    var edges = [];    
+    for (var i=0, node_a; node_a=nodes[i]; i++){
+        for (var j=i+1, node_b; node_b=nodes[j]; j++){
+            edges.push({
+                a: node_a.id,
+                b: node_b.id,
+                points: [[node_a.lat, node_a.lon], [node_b.lat, node_b.lon]],
+                weight: this.distanceFromPoint(node_a.lat, node_a.lon, node_b.lat, node_b.lon)
+            });
+        }
+    }
+    return edges;
+};
+
+
 Network.lineToPoints = function(lat1, lon1, lat2, lon2, interval){
     // Splits a line into multiple points
     // interval: distance in km
