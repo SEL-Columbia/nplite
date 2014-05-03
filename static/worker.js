@@ -11,8 +11,8 @@ function rpc(rpc, data){
 };
 
 var debugI = 0;
-function intermittentDebug(msg, interval){
-    if (debugI % interval === 0){
+function debug(msg, interval){
+    if (!interval || debugI % interval === 0){
         rpc('debug', msg);
     }
     debugI++;
@@ -57,58 +57,87 @@ Network.loadLines = function(lines){
 Network.generateNetwork = function(){
     rpc('status', 'Generating Network...');
     var self = this;
+    var visited = {};
+
     var queue = [];
     this.nodes.forEach(function(node){
-        if (node.type === 'grid'){
-            queue.push(node);
-        }
+        queue.push(node);
     });
 
     rpc('status', 'Building Edges...');
     var edges = [];
-    while (queue.length > 0){
+    var connected = {};
+    while (queue.length){
         var node = queue.shift();
-        intermittentDebug(queue.length, 100);
-        if (node.connected && node.type !== 'grid') continue;
-        var nodeBbox = this.bboxForNode(node, 10);
-        var sw = nodeBbox[0];
-        var ne = nodeBbox[1];
-        var neighbors = this.rtree.search([sw.lon, sw.lat, ne.lon, ne.lat]);
+        if (visited[node.id] || node.type === 'grid') continue;
+
+        var neighbors = this.getNeighbors(node, 10);
+        //debug(neighbors, 100);
+        debug(queue.length, 100);
+
         neighbors.forEach(function(neighbor){
-            if (neighbor.connected || neighbor === node) return;
-            var edge = self.generateEdge(node, neighbor, neighbors);
-            neighbor.connected = true;
+            if (node === neighbor || neighbor.type === 'grid' || connected[node.id + ',' + neighbor.id]) return;
+            var edge = self.generateEdge(node, neighbor);
+            connected[node.id + ',' + neighbor.id] = true;
+            connected[neighbor.id + ',' + node.id] = true;
             edges.push(edge);
-            queue.push(neighbor);
         });
     }
     self.minimumSpanningTree(edges);
 };
 
-Network.generateEdge = function(start, end, neighbors){
+Network.getNeighbors = function(node, distance){
+    var sw = {
+        lat: this.endPoint(node.lat, node.lon, 180, distance)[0],
+        lon: this.endPoint(node.lat, node.lon, 270, distance)[1]
+    };
+    var ne = {
+        lat: this.endPoint(node.lat, node.lon, 0, distance)[0],
+        lon: this.endPoint(node.lat, node.lon, 90, distance)[1]
+    };
+    return this.rtree.search([sw.lon, sw.lat, ne.lon, ne.lat]);
+};
+
+Network.generateEdge = function(start, end){
     var self = this;
-    var weight = self.calculateWeight(start, end);
+
+    // Find neighboring nodes
+    var sw = {
+        lat: Math.min(start.lat, end.lat),
+        lon: Math.min(start.lon, end.lon)
+    };
+    var ne = {
+        lat: Math.max(start.lat, end.lat),
+        lon: Math.max(start.lon, end.lon)
+    };
+    var neighbors = this.rtree.search([sw.lon, sw.lat, ne.lon, ne.lat]);
+
+    // Find cheapest path to end node
     var points = [[start.lat, start.lon]];
     var curr = start;
-    while (curr !== end){
-        // Find cheapest path
+    var weight = 0;
+    while (true){
         var changed = false;
+        var endWeight = weight + self.edgeWeight(curr, end);
         neighbors.forEach(function(node){
-            if (curr === node) return;
-            var pathWeight = self.calculateWeight(curr, node) +
-                ((node === end) ? 0 : self.calculateWeight(node, end));
-            if (pathWeight < weight){
+            if (curr === node || node.type !== 'grid') return;
+            var pathWeight = weight + self.edgeWeight(curr, node) +
+                ((node === end) ? 0 : self.edgeWeight(node, end));
+
+            if (pathWeight < endWeight){
                 weight = pathWeight;
                 curr = node;
-                points.push([node.lat, node.lon]);
+                points.push([curr.lat, curr.lon]);
                 changed = true;
             }
         });
         if (!changed){
+            weight = endWeight;
             points.push([end.lat, end.lon]);
             break;
         }
     }
+    
     return {
         a: start.id,
         b: end.id,
@@ -117,12 +146,12 @@ Network.generateEdge = function(start, end, neighbors){
     };
 };
 
-Network.calculateWeight = function(node1, node2){
+Network.edgeWeight = function(node1, node2){
     var savings = 1;
     if (node1.type === 'grid')
-        savings -= 0.05;
+        savings -= 0.30;
     if (node2.type === 'grid')
-        savings -= 0.05;
+        savings -= 0.30;
     var weight = this.distanceFromPoint(node1.lat, node1.lon, node2.lat, node2.lon);
     return weight * savings;
 };
@@ -186,18 +215,6 @@ Network.linesToPoints = function(lines){
         }
     });
     return points;
-};
-
-Network.bboxForNode = function(node, padding){
-    var sw = {
-        lat: this.endPoint(node.lat, node.lon, 180, padding)[0],
-        lon: this.endPoint(node.lat, node.lon, 270, padding)[1]
-    };
-    var ne = {
-        lat: this.endPoint(node.lat, node.lon, 0, padding)[0],
-        lon: this.endPoint(node.lat, node.lon, 90, padding)[1]
-    };
-    return [sw, ne];
 };
 
 Network.getBearing = function(lat1, lon1, lat2, lon2){
