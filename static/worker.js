@@ -137,7 +137,7 @@ Network.generateEdge = function(start, end){
             break;
         }
     }
-    
+
     return {
         a: start.id,
         b: end.id,
@@ -149,10 +149,10 @@ Network.generateEdge = function(start, end){
 Network.edgeWeight = function(node1, node2){
     var savings = 1;
     if (node1.type === 'grid')
-        savings -= 0.30;
+        savings -= 0.45;
     if (node2.type === 'grid')
-        savings -= 0.30;
-    var weight = this.distanceFromPoint(node1.lat, node1.lon, node2.lat, node2.lon);
+        savings -= 0.45;
+    var weight = this.distBetweenPoints(node1.lat, node1.lon, node2.lat, node2.lon);
     return weight * savings;
 };
 

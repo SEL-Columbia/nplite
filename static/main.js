@@ -1,14 +1,15 @@
 $(function(){
+L_PREFER_CANVAS = true;
+
     Main.init();
 });
-
 
 Main = {};
 Main.init = function(){
     var self = this;
 
     // Initialize map
-    self.map = L.map('map', {zoomControl: false})
+    self.map = L.map('map', {zoomControl: false, zoomAnimation: false, inertia: false})
         .setView([40.809400, -73.960029], 16)
         .on('click', function(e){
             console.log("Lat, Lon : " + e.latlng.lat + ", " + e.latlng.lng)
@@ -39,8 +40,8 @@ Main.init = function(){
         .click(function(){
             $('.status').text('Loading Example');
             $.when(
-                $.get('/static/examples/nodes.csv'),
-                $.getJSON('/static/examples/paths.geojson'))
+                $.get('/static/examples/705.csv'),
+                $.getJSON('/static/examples/705.geojson'))
                 .done(function(csv, geojson){
                     self.drawNetwork(csv[0], geojson[0]);
                 });
@@ -124,7 +125,7 @@ Main.drawNodes = function(nodes){
 
 Main.nodesFromCSV = function(csv){
     var csv = csv.split(/[\r\n|\n]+/);
-    var wgs84 = "+proj=longlat +zone=29 +ellps=WGS84 +datum=WGS84 +no_defs"
+    var wgs84 = "+proj=longlat +zone=29 +ellps=WGS84 +datum=WGS84 +no_defs";
     var proj = csv[0].indexOf('PROJ.4 ') === 0 ? csv.shift().replace('PROJ.4 ', '') : null;
         proj = proj ? proj4(proj, wgs84) : null;
     var headers = csv.shift().toLowerCase().split(',');
@@ -136,9 +137,7 @@ Main.nodesFromCSV = function(csv){
         for (var j=0, value; value=values[j]; j++){
             node[headers[j]] = value;
         }
-        if (node.lat && node.lon){
-            nodes.push(node);
-        }
+        nodes.push(node);
     }
 
     // Projection conversions
