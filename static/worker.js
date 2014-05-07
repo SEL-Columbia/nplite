@@ -72,8 +72,7 @@ Network.generateNetwork = function(){
         if (visited[node.id] || node.type === 'grid') continue;
 
         var neighbors = this.getNeighbors(node, 10);
-        //debug(neighbors, 100);
-        debug(queue.length, 100);
+        debug(queue.length, 1000);
 
         neighbors.forEach(function(neighbor){
             if (node === neighbor || neighbor.type === 'grid' || connected[node.id + ',' + neighbor.id]) return;
@@ -166,6 +165,7 @@ Network.minimumSpanningTree = function(edges){
     });
 
     rpc('status', 'Drawing Network');
+    var startTime = (new Date).getTime();
 
     var forest = {};
     this.nodes.forEach(function(node){
@@ -187,6 +187,7 @@ Network.minimumSpanningTree = function(edges){
             rpc('drawEdge', edge);
         }
     });
+    console.log((new Date).getTime() - startTime);
     rpc('status', 'Finished');
 };
 

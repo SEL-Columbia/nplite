@@ -28,6 +28,7 @@ Main.init = function(){
 
     new L.Control.Zoom({ position: 'bottomright' }).addTo(self.map);
 
+
     // Start worker
     self.worker = new Worker('/static/worker.js');
     self.worker.addEventListener('message', function(e){
@@ -78,15 +79,13 @@ Main.drawNetwork = function(csv, geojson){
 
     nodes.forEach(function(node){
         nodePoints.push([node.lat, node.lon]);
-    });
-
-    self.map.fitBounds(nodePoints);
-
-    nodes.forEach(function(node){
         L.circle([node.lat, node.lon], 100, {fillOpacity: 1, stroke: false, color: 'green'})
             .addTo(self.map);
     });
 
+    self.map.fitBounds(nodePoints);
+    return self.d3layer(nodes);
+    
     self.worker.postMessage({rpc: 'loadNodes', data: nodes});
 
     if (geojson){
@@ -100,6 +99,85 @@ Main.drawNetwork = function(csv, geojson){
 
     self.worker.postMessage({rpc: 'generateNetwork'});
 };
+
+Main.d3layer = function(nodes){
+    var self = this;
+    var center0 = self.map.latLngToLayerPoint(self.map.getCenter());
+    var originalBounds = self.map.getPixelBounds();
+    var originalOrigin = self.map.getPixelOrigin();
+    var center = self.map.getCenter();
+    var size = self.map.getSize();
+    var overlay = self.map.getPanes().overlayPane;
+    var firstOrigin = self.map.getPixelOrigin();
+    var svg = d3.select(overlay)
+        .append('svg')
+        .attr('width', size.x)
+        .attr('height', size.y)
+        .attr('class', 'leaflet-zoom-hide')
+    var g = svg.append('g');
+    var projection = d3.geo.mercator()
+        .center([center.lng, center.lat])
+        .scale((1 << 8 + self.map.getZoom()) / 2 / Math.PI)
+        .translate([size.x/2, size.y/2]);
+    var path = d3.geo.path().projection(projection);
+
+    var features = [];
+    nodes.forEach(function(node){
+        var coordinates = projection([node.lon, node.lat]);
+        //console.log(node.lon, node.lat)
+        g.append('svg:circle')
+            .attr('cx', coordinates[0])
+            .attr('cy', coordinates[1])
+            .attr('r', 1);
+
+        features.push({
+            type: 'Feature',
+            geometry: {
+                type: 'Point',
+                coordinates: [node.lon, node.lat]
+            }
+        });
+    });
+
+/*
+    g.selectAll('path')
+        .data(features)
+        .enter()
+        .append("path")
+        .attr("d", path)
+        .attr('class', 'node');
+*/
+
+    self.map.on('viewreset', reset);
+    self.map.on('moveend', reset);
+
+    function reset(){
+        var center = self.map.latLngToLayerPoint(self.map.getCenter());
+        var bounds = self.map.getPixelBounds();
+        var size = self.map.getSize();
+        var origin = self.map.getPixelOrigin();
+        var scale = Math.round(origin.x / originalOrigin.x * 10) / 10;
+        var ddx = center0.x - center.x;
+        var ddy = center0.y - center.y; 
+        var offset = self.map.containerPointToLayerPoint([0, 0]);
+
+        console.log(offset)
+
+        // Reverse leaflet CSS transform of SVG pane
+        //svg.attr('style', '-webkit-transform:translate(' + -dx + 'px,' + -dy + 'px)');
+        L.DomUtil.setPosition($('svg')[0], offset);
+
+        console.log(ddx, ddy, scale)
+        // Apply SVG transform on G element instead
+        var gx = ((-size.x / 2) * (scale - 1)) + offset.x;
+        var gy = (-size.y / 2) * (scale - 1) + offset.y;
+        var gx = -offset.x * (scale);
+        var gy = -offset.y * (scale );
+        g.attr('transform', 'translate(' + gx + ',' + gy + ')scale(' + scale + ',' + scale + ')');
+    }
+    reset();
+};
+
 
 Main.status = function(text){
     $('.status').text(text);

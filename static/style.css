@@ -7,6 +7,13 @@ html, body {
     font-family: Helvetica, sans-serif;
 }
 
+
+.node {
+  fill: #222;
+  stroke: #222;
+  stroke-width: .5px;
+}
+
 #header {
     position: absolute;
     top: 0;
