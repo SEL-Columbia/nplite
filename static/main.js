@@ -15,16 +15,10 @@ Main.init = function(){
             console.log("Lat, Lon : " + e.latlng.lat + ", " + e.latlng.lng)
             return false;
         });
-    /*
-    L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(self.map);
-    */
     L.tileLayer("http://otile{s}.mqcdn.com/tiles/1.0.0/osm/{z}/{x}/{y}.jpeg", {
             attribution: '<a href="http://www.mapquest.com/">MapQuest</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             subdomains:'1234'
         }).addTo(self.map);
-
 
     new L.Control.Zoom({ position: 'bottomright' }).addTo(self.map);
 
@@ -77,14 +71,15 @@ Main.drawNetwork = function(csv, geojson){
 
     $('.status').text('Loading CSV/GeoJSON');
 
+
     nodes.forEach(function(node){
         nodePoints.push([node.lat, node.lon]);
-        L.circle([node.lat, node.lon], 100, {fillOpacity: 1, stroke: false, color: 'green'})
-            .addTo(self.map);
     });
 
     self.map.fitBounds(nodePoints);
-    return self.d3layer(nodes);
+    self.initD3Layer();
+
+    return self.drawNodes(nodes);
     
     self.worker.postMessage({rpc: 'loadNodes', data: nodes});
 
@@ -93,89 +88,49 @@ Main.drawNetwork = function(csv, geojson){
         lines.forEach(function(line){
             L.polyline(line, {color: 'blue'}).addTo(self.map);
         });
-        L.geoJson(geojson).addTo(self.map);
         self.worker.postMessage({rpc: 'loadLines', data: lines});
     }
 
     self.worker.postMessage({rpc: 'generateNetwork'});
 };
 
-Main.d3layer = function(nodes){
+Main.initD3Layer = function(){
     var self = this;
-    var center0 = self.map.latLngToLayerPoint(self.map.getCenter());
-    var originalBounds = self.map.getPixelBounds();
     var originalOrigin = self.map.getPixelOrigin();
     var center = self.map.getCenter();
     var size = self.map.getSize();
     var overlay = self.map.getPanes().overlayPane;
     var firstOrigin = self.map.getPixelOrigin();
-    var svg = d3.select(overlay)
+    self.svg = d3.select(overlay)
         .append('svg')
         .attr('width', size.x)
-        .attr('height', size.y)
-        .attr('class', 'leaflet-zoom-hide')
-    var g = svg.append('g');
-    var projection = d3.geo.mercator()
+        .attr('height', size.y);
+    self.g = self.svg.append('g');
+    self.projection = d3.geo.mercator()
         .center([center.lng, center.lat])
         .scale((1 << 8 + self.map.getZoom()) / 2 / Math.PI)
         .translate([size.x/2, size.y/2]);
-    var path = d3.geo.path().projection(projection);
+    self.path = d3.geo.path().projection(self.projection);
 
-    var features = [];
-    nodes.forEach(function(node){
-        var coordinates = projection([node.lon, node.lat]);
-        //console.log(node.lon, node.lat)
-        g.append('svg:circle')
-            .attr('cx', coordinates[0])
-            .attr('cy', coordinates[1])
-            .attr('r', 1);
-
-        features.push({
-            type: 'Feature',
-            geometry: {
-                type: 'Point',
-                coordinates: [node.lon, node.lat]
-            }
-        });
-    });
-
-/*
-    g.selectAll('path')
-        .data(features)
-        .enter()
-        .append("path")
-        .attr("d", path)
-        .attr('class', 'node');
-*/
-
-    self.map.on('viewreset', reset);
-    self.map.on('moveend', reset);
-
-    function reset(){
-        var center = self.map.latLngToLayerPoint(self.map.getCenter());
-        var bounds = self.map.getPixelBounds();
+    self.updateSVG = function(){
         var size = self.map.getSize();
         var origin = self.map.getPixelOrigin();
         var scale = Math.round(origin.x / originalOrigin.x * 10) / 10;
-        var ddx = center0.x - center.x;
-        var ddy = center0.y - center.y; 
         var offset = self.map.containerPointToLayerPoint([0, 0]);
-
-        console.log(offset)
+        var centerLatLon = self.map.getCenter()
+        var center = self.projection([centerLatLon.lng, centerLatLon.lat]);
 
         // Reverse leaflet CSS transform of SVG pane
-        //svg.attr('style', '-webkit-transform:translate(' + -dx + 'px,' + -dy + 'px)');
-        L.DomUtil.setPosition($('svg')[0], offset);
+        L.DomUtil.setPosition(self.svg.node(), offset);
 
-        console.log(ddx, ddy, scale)
         // Apply SVG transform on G element instead
-        var gx = ((-size.x / 2) * (scale - 1)) + offset.x;
-        var gy = (-size.y / 2) * (scale - 1) + offset.y;
-        var gx = -offset.x * (scale);
-        var gy = -offset.y * (scale );
-        g.attr('transform', 'translate(' + gx + ',' + gy + ')scale(' + scale + ',' + scale + ')');
+        var gx = -center[0] * scale + (size.x / 2);
+        var gy = -center[1] * scale + (size.y / 2);
+        self.g.attr('transform', 'translate(' + gx + ',' + gy + ')scale(' + scale + ',' + scale + ')');
     }
-    reset();
+
+    self.map.on('viewreset', self.updateSVG);
+    self.map.on('moveend', self.updateSVG);
 };
 
 
@@ -195,10 +150,14 @@ Main.drawEdge = function(edge){
 Main.drawNodes = function(nodes){
     var self = this;
     nodes.forEach(function(node){
-        var color = node.type === 'grid' ? 'red' : 'green';
-        L.circle([node.lat, node.lon], 50, {fillOpacity: 1, stroke: false, color: color})
-            .addTo(self.map);
+        var coordinates = self.projection([node.lon, node.lat]);
+        self.g.append('svg:circle')
+            .attr('cx', coordinates[0])
+            .attr('cy', coordinates[1])
+            .attr('r', 0.5)
+            .attr('class', 'node');
     });
+    self.updateSVG();
 };
 
 Main.nodesFromCSV = function(csv){

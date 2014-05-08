@@ -9,9 +9,11 @@ html, body {
 
 
 .node {
-  fill: #222;
-  stroke: #222;
-  stroke-width: .5px;
+    cursor: pointer;
+    fill: green;
+}
+.node:hover {
+    fill: red;
 }
 
 #header {
