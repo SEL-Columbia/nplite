@@ -16,6 +16,20 @@ html, body {
     fill: red;
 }
 
+.edge {
+    fill: none;
+    stroke: purple;
+    stroke-width: 0.3px;
+    stroke-linecap: round;
+}
+.edge.coast {
+    stroke: orange;
+}
+.edge.grid {
+    stroke: blue;
+}
+
+
 #header {
     position: absolute;
     top: 0;

@@ -1,10 +1,10 @@
 $(function(){
-L_PREFER_CANVAS = true;
-
     Main.init();
 });
 
-Main = {};
+Main = {
+    totNodes: 0
+};
 Main.init = function(){
     var self = this;
 
@@ -17,7 +17,7 @@ Main.init = function(){
         });
     L.tileLayer("http://otile{s}.mqcdn.com/tiles/1.0.0/osm/{z}/{x}/{y}.jpeg", {
             attribution: '<a href="http://www.mapquest.com/">MapQuest</a> &mdash; Map data &copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            subdomains:'1234'
+            subdomains: '1234'
         }).addTo(self.map);
 
     new L.Control.Zoom({ position: 'bottomright' }).addTo(self.map);
@@ -27,7 +27,7 @@ Main.init = function(){
     self.worker = new Worker('/static/worker.js');
     self.worker.addEventListener('message', function(e){
         var msg = e.data;
-        Main[msg.rpc](msg.data);
+        Main[msg.rpc].apply(Main, msg.args);
     }, false);
 
     // Controls
@@ -36,9 +36,10 @@ Main.init = function(){
             $('.status').text('Loading Example');
             $.when(
                 $.get('/static/examples/705.csv'),
-                $.getJSON('/static/examples/705.geojson'))
-                .done(function(csv, geojson){
-                    self.drawNetwork(csv[0], geojson[0]);
+                $.getJSON('/static/examples/705.geojson'),
+                $.getJSON('/static/examples/705coastline.geojson'))
+                .done(function(csv, geojson, coastline){
+                    self.drawNetwork(csv[0], geojson[0], coastline[0]);
                 });
         });
 
@@ -64,13 +65,12 @@ Main.init = function(){
         });
 };
 
-Main.drawNetwork = function(csv, geojson){
+Main.drawNetwork = function(csv, geojson, coastline){
     var self = this;
     var nodes = self.nodesFromCSV(csv);
     var nodePoints = [];
 
     $('.status').text('Loading CSV/GeoJSON');
-
 
     nodes.forEach(function(node){
         nodePoints.push([node.lat, node.lon]);
@@ -79,16 +79,24 @@ Main.drawNetwork = function(csv, geojson){
     self.map.fitBounds(nodePoints);
     self.initD3Layer();
 
-    return self.drawNodes(nodes);
+    self.drawNodes(nodes);
     
     self.worker.postMessage({rpc: 'loadNodes', data: nodes});
 
     if (geojson){
         var lines = self.linesFromGeoJSON(geojson);
         lines.forEach(function(line){
-            L.polyline(line, {color: 'blue'}).addTo(self.map);
+            self.drawLine(line, 'grid');
         });
-        self.worker.postMessage({rpc: 'loadLines', data: lines});
+        self.worker.postMessage({rpc: 'loadGrid', data: lines});
+    }
+
+    if (coastline){
+        var lines = self.linesFromGeoJSON(coastline);
+        lines.forEach(function(line){
+            self.drawLine(line, 'coast');
+        });
+        self.worker.postMessage({rpc: 'loadCoastline', data: lines});
     }
 
     self.worker.postMessage({rpc: 'generateNetwork'});
@@ -96,26 +104,28 @@ Main.drawNetwork = function(csv, geojson){
 
 Main.initD3Layer = function(){
     var self = this;
-    var originalOrigin = self.map.getPixelOrigin();
     var center = self.map.getCenter();
     var size = self.map.getSize();
     var overlay = self.map.getPanes().overlayPane;
-    var firstOrigin = self.map.getPixelOrigin();
+    var bounds = self.map.getBounds()
+    self.dLat = bounds.getNorth() - bounds.getSouth();
+    self.initialScale = (1 << 8 + self.map.getZoom()) / 2 / Math.PI;
+    self.projection = d3.geo.mercator()
+        .center([center.lng, center.lat])
+        .scale(self.initialScale)
+        .translate([size.x/2, size.y/2]);
+    self.path = d3.geo.path().projection(self.projection);
     self.svg = d3.select(overlay)
         .append('svg')
         .attr('width', size.x)
         .attr('height', size.y);
     self.g = self.svg.append('g');
-    self.projection = d3.geo.mercator()
-        .center([center.lng, center.lat])
-        .scale((1 << 8 + self.map.getZoom()) / 2 / Math.PI)
-        .translate([size.x/2, size.y/2]);
-    self.path = d3.geo.path().projection(self.projection);
 
     self.updateSVG = function(){
         var size = self.map.getSize();
-        var origin = self.map.getPixelOrigin();
-        var scale = Math.round(origin.x / originalOrigin.x * 10) / 10;
+        var bounds = self.map.getBounds();
+        var dLat = bounds.getNorth() - bounds.getSouth();
+        var scale = Math.round(self.dLat / dLat * 10) / 10;
         var offset = self.map.containerPointToLayerPoint([0, 0]);
         var centerLatLon = self.map.getCenter()
         var center = self.projection([centerLatLon.lng, centerLatLon.lat]);
@@ -134,6 +144,7 @@ Main.initD3Layer = function(){
 };
 
 
+
 Main.status = function(text){
     $('.status').text(text);
 };
@@ -142,13 +153,29 @@ Main.debug = function(obj){
     console.log(obj);
 };
 
-Main.drawEdge = function(edge){
-    L.polyline(edge.points, {color: 'orange', weight: 2})
-        .addTo(this.map);
+Main.drawLine = function(points, cls){
+    cls = cls || '';
+    var coordinates = [];
+    points.forEach(function(point){
+        coordinates.push([point[1], point[0]]);
+    });
+
+    this.g
+        .append('path')
+        .datum({
+            type: 'Feature',
+            geometry: {
+                type: 'LineString',
+                coordinates: coordinates
+            }
+        })
+        .attr('d', this.path)
+        .attr('class', 'edge ' + cls);
 };
 
 Main.drawNodes = function(nodes){
     var self = this;
+    self.totNodes += nodes.length;
     nodes.forEach(function(node){
         var coordinates = self.projection([node.lon, node.lat]);
         self.g.append('svg:circle')

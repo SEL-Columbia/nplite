@@ -6,8 +6,9 @@ self.addEventListener('message', function(e){
     Network[msg.rpc](msg.data);
 }, false);
 
-function rpc(rpc, data){
-    self.postMessage({rpc: rpc, data: data});
+function rpc(){
+    var args = Array.prototype.slice.call(arguments);
+    self.postMessage({rpc: args[0], args: args.slice(1)});
 };
 
 var debugI = 0;
@@ -36,7 +37,7 @@ Network.loadNodes = function(nodes){
     self.rtree.load(nodes);
 };
 
-Network.loadLines = function(lines){
+Network.loadGrid = function(lines){
     // Converts lines into points (nodes)
     rpc('status', 'Adding Lines...');
     var points = this.linesToPoints(lines);
@@ -52,6 +53,10 @@ Network.loadLines = function(lines){
     rpc('status', 'Drawing Nodes...');
     rpc('drawNodes', nodes);
     rpc('status', 'Done');
+};
+
+Network.loadCoastline = function(lines){
+
 };
 
 Network.generateNetwork = function(){
@@ -184,7 +189,7 @@ Network.minimumSpanningTree = function(edges){
                 forest[id] = set_a;
             });
             // Add edge to tree
-            rpc('drawEdge', edge);
+            rpc('drawLine', edge.points, 'grid');
         }
     });
     console.log((new Date).getTime() - startTime);
@@ -201,7 +206,7 @@ Network.linesToPoints = function(lines){
     lines.forEach(function(line){
         for (var i=0, p1, p2; p1=line[i]; i++){
             if (p2=line[i+1]){
-                var dist = self.distanceFromPoint(p1[0], p1[1], p2[0], p2[1]);
+                var dist = self.distBetweenPoints(p1[0], p1[1], p2[0], p2[1]);
                 var nSplits = Math.floor(dist / interval);
                 var splitLat = (p2[0] - p1[0]) / nSplits;
                 var splitLon = (p2[1] - p1[1]) / nSplits;
@@ -271,7 +276,7 @@ Network.getBoundingBox = function(){
     return [sw, ne];
 };
 
-Network.distanceFromPoint = function(lat1, lon1, lat2, lon2){
+Network.distBetweenPoints = function(lat1, lon1, lat2, lon2){
     // http://stackoverflow.com/questions/27928/how-do-i-calculate-distance-between-two-latitude-longitude-points
     var R = 6371; // Radius of the earth in km    
     var dLat = this.degToRad(lat2 - lat1);
@@ -282,22 +287,6 @@ Network.distanceFromPoint = function(lat1, lon1, lat2, lon2){
     var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
     return R * c; // Distance in km
 };
-
-Network.distBetweenPoints = function(lat1, lon1, lat2, lon2) {
-    var R = 6371;
-    var φ1 = this.degToRad(lat1)
-    var λ1 = this.degToRad(lon1);
-    var φ2 = this.degToRad(lat2)
-    var λ2 = this.degToRad(lon2);
-    var Δφ = φ2 - φ1;
-    var Δλ = λ2 - λ1;
-
-    var a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-}
 
 Network.degToRad = function(deg){
     return deg * Math.PI / 180;
