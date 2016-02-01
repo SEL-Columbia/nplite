@@ -1,4 +1,4 @@
-self.importScripts('static/worker-libs.js');
+self.importScripts('./static/worker-libs.js');
 
 
 self.addEventListener('message', function(e){

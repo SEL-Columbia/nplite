@@ -24,7 +24,7 @@ Main.init = function(){
 
 
     // Start worker
-    self.worker = new Worker('static/worker.js');
+    self.worker = new Worker('./static/worker.js');
     self.worker.addEventListener('message', function(e){
         var msg = e.data;
         Main[msg.rpc].apply(Main, msg.args);
@@ -35,9 +35,9 @@ Main.init = function(){
         .click(function(){
             $('.status').text('Loading Example');
             $.when(
-                $.get('static/examples/705.csv'),
-                $.getJSON('static/examples/705.geojson'),
-                $.getJSON('static/examples/705coastline.geojson'))
+                $.get('./static/examples/705.csv'),
+                $.getJSON('./static/examples/705.geojson'),
+                $.getJSON('./static/examples/705coastline.geojson'))
                 .done(function(csv, geojson, coastline){
                     self.drawNetwork(csv[0], geojson[0], coastline[0]);
                 });
